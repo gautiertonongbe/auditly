@@ -166,6 +166,11 @@ export const workpapers = pgTable("workpapers", {
   sampleSize: integer("sample_size"),
   samplingMethod: text("sampling_method"), // Random, Haphazard, Systematic
   sampleItems: jsonb("sample_items"), // array of sampled items with evidence
+  // Firm / auditor templates — AI strictly follows these when generating content
+  procedureTemplate: text("procedure_template"),
+  resultsTemplate: text("results_template"),
+  conclusionTemplate: text("conclusion_template"),
+  templateId: text("template_id"),     // FK to workpaper_templates (applied template)
   // AI-generated content (editable)
   procedureDraft: text("procedure_draft"),
   procedureFinal: text("procedure_final"),
@@ -306,4 +311,87 @@ export const exportLog = pgTable("export_log", {
   fileUrl: text("file_url"),
   exportedBy: text("exported_by").references(() => users.id),
   exportedAt: timestamp("exported_at").defaultNow().notNull(),
+});
+
+// ── Workpaper Templates ─────────────────────────────────────────────────────
+// Reusable firm-level or engagement-level templates that the AI strictly follows
+
+export const workpaperTemplates = pgTable("workpaper_templates", {
+  id: text("id").primaryKey(),
+  engagementId: text("engagement_id").references(() => engagements.id), // null = firm-wide
+  name: text("name").notNull(),
+  controlType: text("control_type"),   // "CM" | "AM" | "CO" | "PD" | null (any)
+  riskLevel: text("risk_level"),       // "High" | "Medium" | "Low" | null (any)
+  framework: text("framework").default("PCAOB"),
+  // Template sections — use [PLACEHOLDER] markers for evidence-specific fill-ins
+  procedureTemplate: text("procedure_template"),
+  resultsTemplate: text("results_template"),
+  conclusionTemplate: text("conclusion_template"),
+  // Usage tracking
+  useCount: integer("use_count").notNull().default(0),
+  tags: text("tags"),                  // JSON string[] of searchable tags
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ── API Connections ─────────────────────────────────────────────────────────
+// Enterprise system integrations: ServiceNow, Azure AD, Jira, GitHub, Okta, Splunk
+
+export const apiConnections = pgTable("api_connections", {
+  id: text("id").primaryKey(),
+  engagementId: text("engagement_id").notNull().references(() => engagements.id),
+  provider: text("provider").notNull(), // servicenow | azure_ad | okta | jira | github | splunk | salesforce
+  name: text("name").notNull(),         // human label, e.g. "Acme ServiceNow Prod"
+  baseUrl: text("base_url"),            // instance base URL
+  credentials: text("credentials"),     // JSON (username+password, API token, OAuth tokens)
+  isActive: boolean("is_active").notNull().default(true),
+  lastTestedAt: timestamp("last_tested_at"),
+  lastTestResult: text("last_test_result"), // "ok" | error message
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Control → API Mapping ───────────────────────────────────────────────────
+// Maps a specific control to a query config on a connected API system
+
+export const controlApiMappings = pgTable("control_api_mappings", {
+  id: text("id").primaryKey(),
+  controlId: text("control_id").notNull().references(() => controls.id),
+  apiConnectionId: text("api_connection_id").notNull().references(() => apiConnections.id),
+  queryConfig: text("query_config"),   // JSON: {entityType, filters, limit, etc.}
+  lastPulledAt: timestamp("last_pulled_at"),
+  lastPullStatus: text("last_pull_status"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Cloud Storage Connections ───────────────────────────────────────────────
+// Google Drive or OneDrive OAuth connections per user
+
+export const cloudConnections = pgTable("cloud_connections", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  provider: text("provider").notNull(), // google_drive | onedrive
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  email: text("email"),
+  displayName: text("display_name"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Control → Cloud Folder Link ─────────────────────────────────────────────
+// Links a specific control to a folder in Google Drive or OneDrive
+
+export const controlFolderLinks = pgTable("control_folder_links", {
+  id: text("id").primaryKey(),
+  controlId: text("control_id").notNull().references(() => controls.id),
+  cloudConnectionId: text("cloud_connection_id").notNull().references(() => cloudConnections.id),
+  folderId: text("folder_id").notNull(),    // Drive file ID / OneDrive item ID
+  folderName: text("folder_name"),
+  folderPath: text("folder_path"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastSyncStatus: text("last_sync_status"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });

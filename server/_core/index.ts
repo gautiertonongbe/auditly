@@ -12,6 +12,7 @@ import { portalTokens, pbcItems, controls, portalSuggestions } from "../../drizz
 import { buildSSORouter } from "../lib/sso";
 import { uploadToS3 } from "../lib/s3";
 import { parseFileBuffer, getMimeType, classifyPbcFileAI } from "../lib/fileParser";
+import { cloudConnections } from "../../drizzle/schema";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -69,6 +70,87 @@ void (async () => {
     // Add new columns to pbc_items if they don't exist
     await db.execute(sql`ALTER TABLE pbc_items ADD COLUMN IF NOT EXISTS file_content TEXT`);
     await db.execute(sql`ALTER TABLE pbc_items ADD COLUMN IF NOT EXISTS ai_classification TEXT`);
+    // Workpaper template columns
+    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS procedure_template TEXT`);
+    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS results_template TEXT`);
+    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS conclusion_template TEXT`);
+    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS template_id TEXT`);
+    // Reusable workpaper templates
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS workpaper_templates (
+        id TEXT PRIMARY KEY,
+        engagement_id TEXT REFERENCES engagements(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        control_type TEXT,
+        risk_level TEXT,
+        framework TEXT DEFAULT 'PCAOB',
+        procedure_template TEXT,
+        results_template TEXT,
+        conclusion_template TEXT,
+        use_count INTEGER NOT NULL DEFAULT 0,
+        tags TEXT,
+        created_by TEXT REFERENCES users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // API connections (ServiceNow, Azure AD, Jira, GitHub, etc.)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS api_connections (
+        id TEXT PRIMARY KEY,
+        engagement_id TEXT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        name TEXT NOT NULL,
+        base_url TEXT,
+        credentials TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        last_tested_at TIMESTAMPTZ,
+        last_test_result TEXT,
+        created_by TEXT REFERENCES users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Control → API system mapping
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS control_api_mappings (
+        id TEXT PRIMARY KEY,
+        control_id TEXT NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
+        api_connection_id TEXT NOT NULL REFERENCES api_connections(id) ON DELETE CASCADE,
+        query_config TEXT,
+        last_pulled_at TIMESTAMPTZ,
+        last_pull_status TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Cloud storage OAuth connections (Google Drive, OneDrive)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS cloud_connections (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at TIMESTAMPTZ,
+        email TEXT,
+        display_name TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Control → cloud folder link
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS control_folder_links (
+        id TEXT PRIMARY KEY,
+        control_id TEXT NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
+        cloud_connection_id TEXT NOT NULL REFERENCES cloud_connections(id) ON DELETE CASCADE,
+        folder_id TEXT NOT NULL,
+        folder_name TEXT,
+        folder_path TEXT,
+        last_synced_at TIMESTAMPTZ,
+        last_sync_status TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
     // Portal suggestions table
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS portal_suggestions (
@@ -244,6 +326,159 @@ app.post("/api/portal/:token/upload/:pbcItemId", upload.single("file"), async (r
 
 // ── SSO routes ───────────────────────────────────────────────────────────────
 app.use("/api/auth/sso", buildSSORouter());
+
+// ── Google Drive OAuth ────────────────────────────────────────────────────────
+// Step 1: Redirect user to Google consent screen
+app.get("/api/cloud/google-drive/connect", (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: "Google OAuth not configured" });
+  const redirectUri = `${process.env.APP_URL ?? "http://localhost:3001"}/api/cloud/google-drive/callback`;
+  const scope = encodeURIComponent("https://www.googleapis.com/auth/drive.readonly email profile");
+  const state = encodeURIComponent((req.query.userId as string) ?? "");
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent&state=${state}`;
+  res.redirect(url);
+});
+
+// Step 2: Exchange code for tokens, store connection
+app.get("/api/cloud/google-drive/callback", async (req, res) => {
+  try {
+    const { code, state } = req.query as { code: string; state: string };
+    const userId = decodeURIComponent(state ?? "");
+    if (!userId || !code) return res.status(400).send("Missing code or user context");
+
+    const redirectUri = `${process.env.APP_URL ?? "http://localhost:3001"}/api/cloud/google-drive/callback`;
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID ?? "",
+        client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+
+    if (!tokenResponse.ok) throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+    const tokens = await tokenResponse.json() as { access_token: string; refresh_token?: string; expires_in: number };
+
+    // Get user info
+    const profileResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const profile = await profileResponse.json() as { email: string; name: string };
+
+    // Upsert connection (one per user per provider)
+    const existing = await db.select().from(cloudConnections).where(
+      and(eq(cloudConnections.userId, userId), eq(cloudConnections.provider, "google_drive"))
+    );
+
+    if (existing.length > 0) {
+      await db.update(cloudConnections).set({
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token ?? existing[0].refreshToken,
+        tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        email: profile.email,
+        displayName: profile.name,
+        isActive: true,
+      }).where(eq(cloudConnections.id, existing[0].id));
+    } else {
+      await db.insert(cloudConnections).values({
+        id: randomUUID(),
+        userId,
+        provider: "google_drive",
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token ?? null,
+        tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        email: profile.email,
+        displayName: profile.name,
+        isActive: true,
+        createdAt: new Date(),
+      });
+    }
+
+    // Redirect back to the app settings page
+    res.redirect(`${process.env.CLIENT_URL ?? "http://localhost:5173"}/settings?cloud=connected&provider=google_drive`);
+  } catch (err) {
+    console.error("[Google Drive OAuth]", err);
+    res.redirect(`${process.env.CLIENT_URL ?? "http://localhost:5173"}/settings?cloud=error`);
+  }
+});
+
+// ── OneDrive OAuth ────────────────────────────────────────────────────────────
+app.get("/api/cloud/onedrive/connect", (req, res) => {
+  const clientId = process.env.ONEDRIVE_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: "OneDrive OAuth not configured" });
+  const redirectUri = `${process.env.APP_URL ?? "http://localhost:3001"}/api/cloud/onedrive/callback`;
+  const scope = encodeURIComponent("Files.Read.All User.Read offline_access");
+  const state = encodeURIComponent((req.query.userId as string) ?? "");
+  const url = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&state=${state}`;
+  res.redirect(url);
+});
+
+app.get("/api/cloud/onedrive/callback", async (req, res) => {
+  try {
+    const { code, state } = req.query as { code: string; state: string };
+    const userId = decodeURIComponent(state ?? "");
+    if (!userId || !code) return res.status(400).send("Missing code or user context");
+
+    const redirectUri = `${process.env.APP_URL ?? "http://localhost:3001"}/api/cloud/onedrive/callback`;
+    const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.ONEDRIVE_CLIENT_ID ?? "",
+        client_secret: process.env.ONEDRIVE_CLIENT_SECRET ?? "",
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+
+    if (!tokenResponse.ok) throw new Error(`OneDrive token exchange failed: ${tokenResponse.status}`);
+    const tokens = await tokenResponse.json() as { access_token: string; refresh_token?: string; expires_in: number };
+
+    // Get user profile via Graph
+    const profileResponse = await fetch("https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const profile = await profileResponse.json() as { displayName: string; mail?: string; userPrincipalName?: string };
+    const email = profile.mail ?? profile.userPrincipalName ?? "";
+
+    const existing = await db.select().from(cloudConnections).where(
+      and(eq(cloudConnections.userId, userId), eq(cloudConnections.provider, "onedrive"))
+    );
+
+    if (existing.length > 0) {
+      await db.update(cloudConnections).set({
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token ?? existing[0].refreshToken,
+        tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        email,
+        displayName: profile.displayName,
+        isActive: true,
+      }).where(eq(cloudConnections.id, existing[0].id));
+    } else {
+      await db.insert(cloudConnections).values({
+        id: randomUUID(),
+        userId,
+        provider: "onedrive",
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token ?? null,
+        tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        email,
+        displayName: profile.displayName,
+        isActive: true,
+        createdAt: new Date(),
+      });
+    }
+
+    res.redirect(`${process.env.CLIENT_URL ?? "http://localhost:5173"}/settings?cloud=connected&provider=onedrive`);
+  } catch (err) {
+    console.error("[OneDrive OAuth]", err);
+    res.redirect(`${process.env.CLIENT_URL ?? "http://localhost:5173"}/settings?cloud=error`);
+  }
+});
 
 // ── tRPC (with rate limiters on sensitive paths) ─────────────────────────────
 // Auth procedures get the strict limiter

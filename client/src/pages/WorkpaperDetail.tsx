@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Sparkles, CheckCircle, AlertTriangle, Save, UserCheck, Edit3, Eye, MessageSquare, Send, Bot, User, ChevronDown, ChevronRight, Shield, BarChart2, FileWarning, Loader2, Scan } from "lucide-react";
+import { ArrowLeft, Sparkles, CheckCircle, AlertTriangle, Save, UserCheck, Edit3, Eye, MessageSquare, Send, Bot, User, ChevronDown, ChevronRight, Shield, BarChart2, FileWarning, Loader2, Scan, BookTemplate, Library, Zap, PenLine, X, Download, RefreshCw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format } from "date-fns";
 import ScreenshotAnnotator from "@/components/audit/ScreenshotAnnotator";
@@ -83,6 +83,43 @@ export default function WorkpaperDetailPage() {
   const [agentExcDesc, setAgentExcDesc] = useState("");
   const [agentExcCount, setAgentExcCount] = useState(1);
   const [annotateItem, setAnnotateItem] = useState<{ id: string; fileName: string } | null>(null);
+
+  // Template & Procedures state
+  const [templatePanelOpen, setTemplatePanelOpen] = useState(false);
+  const [procedureMode, setProcedureMode] = useState<"ai" | "manual">("ai");
+  const [templateEdits, setTemplateEdits] = useState<{ procedure: string; results: string; conclusion: string }>({ procedure: "", results: "", conclusion: "" });
+  const [templateEditing, setTemplateEditing] = useState(false);
+  const [saveLibraryOpen, setSaveLibraryOpen] = useState(false);
+  const [libraryName, setLibraryName] = useState("");
+  const [libraryFirmWide, setLibraryFirmWide] = useState(false);
+  const [applyLibraryId, setApplyLibraryId] = useState("");
+  const [pullSystemOpen, setPullSystemOpen] = useState(false);
+  const [pullMappingId, setPullMappingId] = useState("");
+
+  // Template queries + mutations
+  const { data: templatesList } = trpc.templates.list.useQuery({ engagementId: engId });
+  const saveInlineTemplate = trpc.workpapers.saveInlineTemplate.useMutation({ onSuccess: () => { refetch(); setTemplateEditing(false); } });
+  const applyTemplate = trpc.templates.applyToWorkpaper.useMutation({ onSuccess: () => refetch() });
+  const saveToLibrary = trpc.templates.saveToLibrary.useMutation({ onSuccess: () => { refetch(); setSaveLibraryOpen(false); setLibraryName(""); } });
+
+  // API connections for Pull from System
+  const { data: apiConnectionsList } = trpc.connections.list.useQuery({ engagementId: engId });
+  const { data: mappingsList } = trpc.connections.getMappings.useQuery({ controlId });
+  const pullEvidence = trpc.connections.pullEvidence.useMutation({ onSuccess: () => { refetch(); setPullSystemOpen(false); } });
+
+  // Populate template fields from workpaper when panel opens
+  const openTemplatePanel = () => {
+    if (!templateEditing) {
+      setTemplateEdits({
+        procedure: wp?.procedureTemplate ?? "",
+        results: wp?.resultsTemplate ?? "",
+        conclusion: wp?.conclusionTemplate ?? "",
+      });
+    }
+    setTemplatePanelOpen(o => !o);
+  };
+
+  const hasTemplates = !!(wp?.procedureTemplate || wp?.resultsTemplate || wp?.conclusionTemplate);
 
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
 
@@ -434,6 +471,277 @@ export default function WorkpaperDetailPage() {
               <CheckCircle size={13} /> Mark as Pass
             </button>
           </div>
+
+          {/* Templates & Procedures Panel */}
+          <div style={{ background: "var(--surface)", borderRadius: 12, border: `1px solid ${hasTemplates ? "#D4AF37" : "var(--border)"}`, overflow: "hidden", marginBottom: 16 }}>
+            <button
+              onClick={openTemplatePanel}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", background: hasTemplates ? "linear-gradient(135deg, #FEF9E7, #FFFBF0)" : "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: hasTemplates ? "linear-gradient(135deg, #D4AF37, #F4D03F)" : "linear-gradient(135deg, #6B7280, #9CA3AF)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <BookTemplate size={15} color="#fff" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)", display: "flex", alignItems: "center", gap: 8 }}>
+                  Firm Templates
+                  {hasTemplates && (
+                    <span style={{ fontSize: 10, background: "#D4AF37", color: "#1E3A5F", padding: "2px 7px", borderRadius: 10, fontWeight: 700 }}>ACTIVE</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {hasTemplates ? "AI will strictly follow your firm's template structure" : "Define procedure/results/conclusion templates for AI to follow exactly"}
+                </div>
+              </div>
+              {templatePanelOpen ? <ChevronDown size={16} color="var(--text-muted)" /> : <ChevronRight size={16} color="var(--text-muted)" />}
+            </button>
+
+            {templatePanelOpen && (
+              <div style={{ borderTop: "1px solid var(--border)" }}>
+                {/* Mode toggle: AI-driven vs Manual */}
+                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", background: "#F9FAFB", display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Procedure mode:</span>
+                  <div style={{ display: "flex", borderRadius: 8, border: "1px solid var(--border)", overflow: "hidden" }}>
+                    <button
+                      onClick={() => setProcedureMode("ai")}
+                      style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", background: procedureMode === "ai" ? "var(--navy)" : "#fff", color: procedureMode === "ai" ? "#fff" : "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                      <Sparkles size={11} /> AI-Driven
+                    </button>
+                    <button
+                      onClick={() => setProcedureMode("manual")}
+                      style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", borderLeft: "1px solid var(--border)", cursor: "pointer", background: procedureMode === "manual" ? "var(--navy)" : "#fff", color: procedureMode === "manual" ? "#fff" : "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                      <PenLine size={11} /> Manual
+                    </button>
+                  </div>
+                  {procedureMode === "manual" && (
+                    <span style={{ fontSize: 11, color: "#D97706", fontWeight: 600 }}>You have full control — write the procedure directly, no AI generation</span>
+                  )}
+                  {procedureMode === "ai" && (
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>AI generates content using the templates below as strict structure guides</span>
+                  )}
+                </div>
+
+                {procedureMode === "manual" ? (
+                  /* Manual mode: write procedure/results/conclusion directly */
+                  <div style={{ padding: 20 }}>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, padding: "10px 14px", background: "#F0F9FF", borderRadius: 8, border: "1px solid #BAE6FD" }}>
+                      Manual mode: write your own procedure, results, and conclusion. These are saved as the final content immediately.
+                    </div>
+                    {(["procedure", "results", "conclusion"] as const).map(field => (
+                      <div key={field} style={{ marginBottom: 16 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-strong)", marginBottom: 6, textTransform: "capitalize" }}>
+                          {field === "procedure" ? "Procedure Performed" : field === "results" ? "Results" : "Conclusion"}
+                        </label>
+                        <textarea
+                          value={drafts[field as Tab] ?? getContent(field as Tab)}
+                          onChange={e => setDrafts(d => ({ ...d, [field]: e.target.value }))}
+                          rows={5}
+                          placeholder={`Enter your ${field} text...`}
+                          style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: 13, lineHeight: 1.7, resize: "vertical", fontFamily: "inherit" }}
+                        />
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => upsert.mutate({ controlId, engagementId: engId, procedureFinal: drafts.procedure ?? getContent("procedure"), resultsFinal: drafts.results ?? getContent("results"), conclusionFinal: drafts.conclusion ?? getContent("conclusion") })}
+                        disabled={upsert.isPending}
+                        style={{ ...btnPri, gap: 6 }}>
+                        <Save size={13} /> Save as Final
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* AI-driven mode: template editor */
+                  <div style={{ padding: 20 }}>
+                    {/* Apply from Library */}
+                    <div style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
+                      <Library size={14} color="var(--accent)" />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-strong)" }}>Apply from Library:</span>
+                      <select
+                        value={applyLibraryId}
+                        onChange={e => setApplyLibraryId(e.target.value)}
+                        style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontFamily: "inherit" }}>
+                        <option value="">Choose a saved template...</option>
+                        {(templatesList ?? []).map(t => (
+                          <option key={t.id} value={t.id}>{t.name}{t.controlType ? ` (${t.controlType})` : ""}{t.engagementId ? "" : " [Firm-wide]"}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!applyLibraryId || !wp?.id) return;
+                          applyTemplate.mutate({ templateId: applyLibraryId, workpaperId: wp.id });
+                        }}
+                        disabled={!applyLibraryId || !wp?.id || applyTemplate.isPending}
+                        style={{ ...btnPri, gap: 5, fontSize: 12, opacity: !applyLibraryId ? 0.5 : 1 }}>
+                        {applyTemplate.isPending ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Download size={12} />}
+                        Apply
+                      </button>
+                    </div>
+
+                    {/* Divider */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+                      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>or define templates directly</span>
+                      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                    </div>
+
+                    {/* Template fields */}
+                    {(["procedure", "results", "conclusion"] as const).map(field => (
+                      <div key={field} style={{ marginBottom: 16 }}>
+                        <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "var(--text-strong)", marginBottom: 6 }}>
+                          <span style={{ textTransform: "capitalize" }}>
+                            {field === "procedure" ? "Procedure Template" : field === "results" ? "Results Template" : "Conclusion Template"}
+                          </span>
+                          <span style={{ fontSize: 10, fontWeight: 400, color: "var(--text-muted)" }}>Use [PLACEHOLDER] for evidence-specific fill-ins</span>
+                        </label>
+                        <textarea
+                          value={templateEditing ? templateEdits[field] : (wp?.[`${field}Template` as "procedureTemplate" | "resultsTemplate" | "conclusionTemplate"] ?? "")}
+                          onChange={e => { if (templateEditing) setTemplateEdits(t => ({ ...t, [field]: e.target.value })); }}
+                          onClick={() => { if (!templateEditing) { setTemplateEditing(true); setTemplateEdits({ procedure: wp?.procedureTemplate ?? "", results: wp?.resultsTemplate ?? "", conclusion: wp?.conclusionTemplate ?? "" }); } }}
+                          rows={4}
+                          placeholder={`Define the ${field} structure AI must follow. Example:\n1. Obtained [PLACEHOLDER] from the client.\n2. Verified that [PLACEHOLDER] approved the transaction.\n3. Compared [PLACEHOLDER] to supporting documentation.`}
+                          style={{ width: "100%", border: `1px solid ${templateEditing ? "var(--navy)" : "var(--border)"}`, borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.7, resize: "vertical", fontFamily: "monospace", background: templateEditing ? "#fff" : "#F9FAFB" }}
+                        />
+                      </div>
+                    ))}
+
+                    {/* Action buttons */}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {templateEditing && (
+                        <>
+                          <button
+                            onClick={() => {
+                              if (!wp?.id) return;
+                              saveInlineTemplate.mutate({ workpaperId: wp.id, procedureTemplate: templateEdits.procedure || null, resultsTemplate: templateEdits.results || null, conclusionTemplate: templateEdits.conclusion || null });
+                            }}
+                            disabled={saveInlineTemplate.isPending}
+                            style={{ ...btnPri, gap: 6 }}>
+                            {saveInlineTemplate.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={13} />}
+                            Save Templates
+                          </button>
+                          <button onClick={() => setTemplateEditing(false)} style={btnSec}>Cancel</button>
+                        </>
+                      )}
+                      {hasTemplates && (
+                        <>
+                          <button
+                            onClick={() => setSaveLibraryOpen(true)}
+                            style={{ ...btnSec, gap: 5, fontSize: 12 }}>
+                            <Library size={12} /> Save to Library
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!wp?.id) return;
+                              saveInlineTemplate.mutate({ workpaperId: wp.id, procedureTemplate: null, resultsTemplate: null, conclusionTemplate: null });
+                            }}
+                            style={{ ...btnSec, gap: 5, fontSize: 12, color: "var(--red)", borderColor: "#FECACA" }}>
+                            <X size={12} /> Clear Templates
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {hasTemplates && (
+                      <div style={{ marginTop: 14, padding: "10px 14px", background: "#FEF9E7", borderRadius: 8, border: "1px solid #D4AF37", display: "flex", alignItems: "center", gap: 8 }}>
+                        <Zap size={13} color="#D4AF37" />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#92400E" }}>Templates are active. Every "Generate AI Writeup" for this control will strictly follow these structures.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Save to Library modal */}
+                {saveLibraryOpen && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ background: "#fff", borderRadius: 14, width: 420, padding: 28, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px" }}>Save Template to Library</h3>
+                      <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Template Name *</label>
+                      <input value={libraryName} onChange={e => setLibraryName(e.target.value)} placeholder="e.g. CM High Risk — Monthly Controls"
+                        style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 12, fontFamily: "inherit", boxSizing: "border-box" }} />
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 16 }}>
+                        <input type="checkbox" checked={libraryFirmWide} onChange={e => setLibraryFirmWide(e.target.checked)} />
+                        Make firm-wide (available across all engagements)
+                      </label>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                        <button onClick={() => setSaveLibraryOpen(false)} style={btnSec}>Cancel</button>
+                        <button
+                          onClick={() => {
+                            if (!wp?.id || !libraryName) return;
+                            saveToLibrary.mutate({ workpaperId: wp.id, engagementId: engId, name: libraryName, controlType: control?.itgcType ?? control?.itacType ?? undefined, firmWide: libraryFirmWide });
+                          }}
+                          disabled={!libraryName || saveToLibrary.isPending}
+                          style={{ ...btnPri, gap: 6, opacity: !libraryName ? 0.5 : 1 }}>
+                          {saveToLibrary.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Library size={13} />}
+                          Save to Library
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Pull from System Panel */}
+          {(mappingsList?.length ?? 0) > 0 && (
+            <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
+              <button
+                onClick={() => setPullSystemOpen(o => !o)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg, #0F766E, #0D9488)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <RefreshCw size={15} color="#fff" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Pull Evidence from System</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{mappingsList?.length ?? 0} connected system{(mappingsList?.length ?? 0) !== 1 ? "s" : ""} — auto-create PBC items from live data</div>
+                </div>
+                {pullSystemOpen ? <ChevronDown size={16} color="var(--text-muted)" /> : <ChevronRight size={16} color="var(--text-muted)" />}
+              </button>
+
+              {pullSystemOpen && (
+                <div style={{ borderTop: "1px solid var(--border)", padding: 18 }}>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 14px" }}>
+                    Select a connected system and pull live audit evidence directly into this control's PBC list.
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select
+                      value={pullMappingId}
+                      onChange={e => setPullMappingId(e.target.value)}
+                      style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 13, fontFamily: "inherit" }}>
+                      <option value="">Select a system connection...</option>
+                      {(mappingsList ?? []).map(m => {
+                        const conn = (apiConnectionsList ?? []).find(c => c.id === m.apiConnectionId);
+                        return (
+                          <option key={m.id} value={m.id}>
+                            {conn?.name ?? conn?.provider ?? m.apiConnectionId}
+                            {m.lastPulledAt ? ` — last pulled ${new Date(m.lastPulledAt).toLocaleDateString()}` : " — never pulled"}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (!pullMappingId) return;
+                        pullEvidence.mutate({ mappingId: pullMappingId, controlId, engagementId: engId });
+                      }}
+                      disabled={!pullMappingId || pullEvidence.isPending}
+                      style={{ ...btnPri, gap: 6, background: "#0F766E", opacity: !pullMappingId ? 0.5 : 1 }}>
+                      {pullEvidence.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />}
+                      {pullEvidence.isPending ? "Pulling..." : "Pull Evidence"}
+                    </button>
+                  </div>
+                  {pullEvidence.isSuccess && (
+                    <div style={{ marginTop: 10, padding: "8px 12px", background: "#ECFDF5", borderRadius: 8, fontSize: 12, color: "#065F46", fontWeight: 600 }}>
+                      {pullEvidence.data.pulled} records pulled — {pullEvidence.data.pbcItemsCreated} PBC items created
+                    </div>
+                  )}
+                  {pullEvidence.isError && (
+                    <div style={{ marginTop: 10, padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, fontSize: 12, color: "var(--red)" }}>
+                      {pullEvidence.error.message}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* AI Agents Panel */}
           <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>

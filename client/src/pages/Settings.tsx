@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { User, Building2, Bell, Shield, Key, Save, Users, Plus, Trash2, Crown, ChevronDown, Smartphone, Copy, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { User, Building2, Bell, Shield, Key, Save, Users, Plus, Trash2, Crown, ChevronDown, Smartphone, Copy, CheckCircle, AlertTriangle, Loader2, Zap, Cloud, RefreshCw, Unplug, Link2, X, HardDrive, FolderOpen } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-type Tab = "profile" | "firm" | "team" | "notifications" | "security";
+type Tab = "profile" | "firm" | "team" | "notifications" | "security" | "integrations" | "cloud";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -14,6 +14,8 @@ export default function SettingsPage() {
     { id: "team",          label: "Team",           icon: Users },
     { id: "notifications", label: "Notifications",  icon: Bell },
     { id: "security",      label: "Security",       icon: Shield },
+    { id: "integrations",  label: "API Integrations", icon: Zap },
+    { id: "cloud",         label: "Cloud Storage",  icon: Cloud },
   ];
 
   return (
@@ -51,6 +53,8 @@ export default function SettingsPage() {
           {activeTab === "team" && <TeamTab />}
           {activeTab === "notifications" && <NotificationsTab />}
           {activeTab === "security" && <SecurityTab />}
+          {activeTab === "integrations" && <IntegrationsTab />}
+          {activeTab === "cloud" && <CloudTab userId={me?.id ?? ""} />}
         </div>
       </div>
     </div>
@@ -556,6 +560,257 @@ function TeamTab() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── API Integrations Tab ─────────────────────────────────────────────────────
+
+function IntegrationsTab() {
+  const { data: engagements } = trpc.engagements.list.useQuery();
+  const [selectedEngId, setSelectedEngId] = useState<string>("");
+  const { data: connections, refetch } = trpc.connections.list.useQuery({ engagementId: selectedEngId });
+  const testConn = trpc.connections.test.useMutation({ onSuccess: () => refetch() });
+  const deleteConn = trpc.connections.delete.useMutation({ onSuccess: () => refetch() });
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [provider, setProvider] = useState<"servicenow" | "azure_ad" | "jira" | "github">("servicenow");
+  const [connName, setConnName] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [creds, setCreds] = useState<Record<string, string>>({});
+  const createConn = trpc.connections.create.useMutation({
+    onSuccess: () => { refetch(); setShowAddForm(false); setConnName(""); setBaseUrl(""); setCreds({}); },
+  });
+
+  const PROVIDER_LABELS: Record<string, string> = {
+    servicenow: "ServiceNow", azure_ad: "Azure AD / Entra", jira: "Jira", github: "GitHub",
+    okta: "Okta", splunk: "Splunk", salesforce: "Salesforce",
+  };
+
+  const PROVIDER_CRED_FIELDS: Record<string, { key: string; label: string; type?: string }[]> = {
+    servicenow: [{ key: "username", label: "Username" }, { key: "password", label: "Password / Token", type: "password" }],
+    azure_ad:   [{ key: "tenantId", label: "Tenant ID" }, { key: "clientId", label: "Client ID" }, { key: "clientSecret", label: "Client Secret", type: "password" }],
+    jira:       [{ key: "email", label: "Email" }, { key: "apiToken", label: "API Token", type: "password" }],
+    github:     [{ key: "token", label: "Personal Access Token", type: "password" }],
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 6px", display: "flex", alignItems: "center", gap: 8 }}>
+          <Zap size={15} /> API Integrations
+        </h2>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 20px" }}>
+          Connect enterprise systems to pull audit evidence directly into PBC items. Supports ServiceNow, Azure AD, Jira, GitHub, Okta, Splunk.
+        </p>
+        <div>
+          <label style={lbl}>Engagement</label>
+          <select value={selectedEngId} onChange={e => setSelectedEngId(e.target.value)} style={{ ...inp, cursor: "pointer" }}>
+            <option value="">Select an engagement...</option>
+            {engagements?.map(e => <option key={e.id} value={e.id}>{e.clientName} — FY{e.fiscalYear}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {selectedEngId && (
+        <>
+          {/* Existing connections */}
+          <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Connections ({connections?.length ?? 0})</span>
+              <button onClick={() => setShowAddForm(true)} style={{ ...btnPri, display: "flex", alignItems: "center", gap: 5, fontSize: 12, padding: "6px 12px" }}>
+                <Plus size={12} /> Add Connection
+              </button>
+            </div>
+
+            {(connections?.length ?? 0) === 0 && (
+              <div style={{ padding: 30, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                <Zap size={24} style={{ display: "block", margin: "0 auto 10px", opacity: 0.3 }} />
+                No connections yet. Add one to start pulling audit evidence automatically.
+              </div>
+            )}
+
+            {connections?.map(conn => (
+              <div key={conn.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "linear-gradient(135deg, #1E3A5F, #2A4F7C)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Link2 size={16} color="#D4AF37" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-strong)" }}>{conn.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {PROVIDER_LABELS[conn.provider] ?? conn.provider}
+                    {conn.baseUrl ? ` · ${conn.baseUrl}` : ""}
+                    {conn.lastTestedAt ? ` · Tested ${new Date(conn.lastTestedAt).toLocaleDateString()}` : ""}
+                  </div>
+                </div>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8,
+                  background: conn.lastTestResult === "ok" ? "#DCFCE7" : conn.lastTestResult ? "#FEE2E2" : "#F3F4F6",
+                  color: conn.lastTestResult === "ok" ? "#16A34A" : conn.lastTestResult ? "var(--red)" : "var(--text-muted)",
+                }}>
+                  {conn.lastTestResult === "ok" ? "Connected" : conn.lastTestResult ? "Error" : "Not tested"}
+                </span>
+                <button
+                  onClick={() => testConn.mutate({ id: conn.id })}
+                  disabled={testConn.isPending}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", color: "var(--text)", display: "flex", alignItems: "center", gap: 4 }}>
+                  {testConn.isPending ? <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={11} />}
+                  Test
+                </button>
+                <button onClick={() => deleteConn.mutate({ id: conn.id, engagementId: selectedEngId })}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Add connection form */}
+          {showAddForm && (
+            <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Add API Connection</h3>
+                <button onClick={() => setShowAddForm(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={16} /></button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={lbl}>Provider</label>
+                  <select value={provider} onChange={e => { setProvider(e.target.value as "servicenow" | "azure_ad" | "jira" | "github"); setCreds({}); }} style={{ ...inp, cursor: "pointer" }}>
+                    {Object.entries(PROVIDER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Connection Name</label>
+                  <input value={connName} onChange={e => setConnName(e.target.value)} placeholder="e.g. Acme ServiceNow Prod" style={inp} />
+                </div>
+                {(provider === "servicenow" || provider === "jira") && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={lbl}>Instance URL</label>
+                    <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder={provider === "servicenow" ? "https://company.service-now.com" : "https://company.atlassian.net"} style={inp} />
+                  </div>
+                )}
+                {(PROVIDER_CRED_FIELDS[provider] ?? []).map(field => (
+                  <div key={field.key}>
+                    <label style={lbl}>{field.label}</label>
+                    <input
+                      type={field.type ?? "text"}
+                      value={creds[field.key] ?? ""}
+                      onChange={e => setCreds(c => ({ ...c, [field.key]: e.target.value }))}
+                      style={inp}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => createConn.mutate({ engagementId: selectedEngId, provider, name: connName, baseUrl: baseUrl || undefined, credentials: creds })}
+                  disabled={!connName || createConn.isPending}
+                  style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6, opacity: !connName ? 0.5 : 1 }}>
+                  {createConn.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={13} />}
+                  Add Connection
+                </button>
+                <button onClick={() => setShowAddForm(false)} style={{ background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+              {createConn.isError && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--red)", background: "#FEF2F2", borderRadius: 6, padding: "8px 12px" }}>{createConn.error.message}</div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Cloud Storage Tab ────────────────────────────────────────────────────────
+
+function CloudTab({ userId }: { userId: string }) {
+  const { data: connections, refetch } = trpc.cloud.listConnections.useQuery();
+  const disconnect = trpc.cloud.disconnect.useMutation({ onSuccess: () => refetch() });
+
+  const handleConnect = (provider: "google_drive" | "onedrive") => {
+    const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:3001";
+    window.location.href = `${apiBase}/api/cloud/${provider === "google_drive" ? "google-drive" : "onedrive"}/connect?userId=${encodeURIComponent(userId)}`;
+  };
+
+  const PROVIDERS = [
+    {
+      id: "google_drive" as const,
+      name: "Google Drive",
+      description: "Connect your Google Drive to sync evidence files from specific folders into PBC items.",
+      icon: HardDrive,
+      color: "#4285F4",
+    },
+    {
+      id: "onedrive" as const,
+      name: "Microsoft OneDrive",
+      description: "Connect OneDrive / SharePoint to pull audit evidence directly from client-shared folders.",
+      icon: Cloud,
+      color: "#0078D4",
+    },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 6px", display: "flex", alignItems: "center", gap: 8 }}>
+          <FolderOpen size={15} /> Cloud Storage
+        </h2>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+          Connect Google Drive or OneDrive to let Auditly sync evidence files directly from client folders into PBC items. Files are downloaded, text-extracted, and AI-classified automatically.
+        </p>
+      </div>
+
+      {PROVIDERS.map(p => {
+        const Icon = p.icon;
+        const conn = connections?.find(c => c.provider === p.id);
+
+        return (
+          <div key={p.id} style={{ background: "var(--surface)", borderRadius: 12, border: `1px solid ${conn ? "#A7F3D0" : "var(--border)"}`, padding: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: `${p.color}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon size={22} color={p.color} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-strong)" }}>{p.name}</span>
+                  {conn && (
+                    <span style={{ fontSize: 10, background: "#DCFCE7", color: "#16A34A", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>Connected</span>
+                  )}
+                </div>
+                {conn ? (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {conn.displayName ?? conn.email} · Connected {new Date(conn.createdAt).toLocaleDateString()}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.description}</div>
+                )}
+              </div>
+              {conn ? (
+                <button
+                  onClick={() => disconnect.mutate({ id: conn.id })}
+                  style={{ background: "#FEE2E2", color: "var(--red)", border: "1px solid #FECACA", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                  <Unplug size={12} /> Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleConnect(p.id)}
+                  style={{ ...btnPri, display: "flex", alignItems: "center", gap: 5, fontSize: 12, padding: "8px 14px", background: p.color }}>
+                  <Link2 size={12} /> Connect
+                </button>
+              )}
+            </div>
+
+            {conn && (
+              <div style={{ marginTop: 14, padding: "12px 14px", background: "#F0FDF4", borderRadius: 8, fontSize: 12, color: "#065F46", lineHeight: 1.6 }}>
+                To sync evidence: open a control in your workpapers, open the "Pull Evidence from System" panel, then link a folder to that control. Auditly will download all files from that folder and create PBC items automatically.
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

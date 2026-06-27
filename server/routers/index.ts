@@ -12,6 +12,9 @@ import { exportRouter } from "./export";
 import { auditTrailRouter } from "./auditTrail";
 import { usersRouter } from "./users";
 import { portalRouter } from "./portal";
+import { templatesRouter } from "./templates";
+import { connectionsRouter } from "./connections";
+import { cloudRouter } from "./cloud";
 
 export const appRouter = router({
   auth: authRouter,
@@ -27,6 +30,9 @@ export const appRouter = router({
   auditTrail: auditTrailRouter,
   users: usersRouter,
   portal: portalRouter,
+  templates: templatesRouter,
+  connections: connectionsRouter,
+  cloud: cloudRouter,
 });
 
 export type AppRouter = typeof appRouter;

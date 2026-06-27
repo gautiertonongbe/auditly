@@ -82,6 +82,8 @@ export const workpapersRouter = router({
         .from(pbcItems)
         .where(and(eq(pbcItems.controlId, input.controlId), eq(pbcItems.status, "Accepted")));
 
+      // Pass firm/workpaper templates so AI strictly follows the defined structure
+      const wp0 = existingWp[0];
       const aiResult = await generateWorkpaperWriteup({
         controlRef: control.controlRef,
         controlObjective: control.objective,
@@ -89,10 +91,13 @@ export const workpapersRouter = router({
         controlType: (control.itgcType ?? control.itacType ?? ""),
         frequency: control.frequency,
         riskLevel: control.riskLevel,
-        population: input.population ?? existingWp[0]?.populationDescription ?? "Not yet defined",
+        population: input.population ?? wp0?.populationDescription ?? "Not yet defined",
         sampleSize,
         pbcItems: acceptedPbc,
         framework: "PCAOB",
+        procedureTemplate: wp0?.procedureTemplate ?? null,
+        resultsTemplate: wp0?.resultsTemplate ?? null,
+        conclusionTemplate: wp0?.conclusionTemplate ?? null,
       });
 
       const samplingRationale = getSamplingRationale(
@@ -144,6 +149,37 @@ export const workpapersRouter = router({
       });
 
       return { sampleSize, ...aiResult, samplingRationale };
+    }),
+
+  // ── Save Inline Template ─────────────────────────────────────────────────
+  // Saves procedure/results/conclusion templates directly on the workpaper.
+  // Next AI generation will strictly follow these templates.
+  saveInlineTemplate: auditedProcedure
+    .input(z.object({
+      workpaperId: z.string(),
+      procedureTemplate: z.string().nullable().optional(),
+      resultsTemplate: z.string().nullable().optional(),
+      conclusionTemplate: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.update(workpapers).set({
+        procedureTemplate: input.procedureTemplate ?? null,
+        resultsTemplate: input.resultsTemplate ?? null,
+        conclusionTemplate: input.conclusionTemplate ?? null,
+        updatedAt: new Date(),
+      }).where(eq(workpapers.id, input.workpaperId));
+
+      await ctx.db.insert(auditTrail).values({
+        id: randomUUID(),
+        entityType: "workpaper",
+        entityId: input.workpaperId,
+        action: "template_saved",
+        description: "Workpaper template updated — AI will follow this structure on next generation",
+        userId: ctx.user.id,
+        timestamp: new Date(),
+      });
+
+      return { ok: true };
     }),
 
   signOff: auditedProcedure

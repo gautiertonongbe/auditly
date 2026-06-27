@@ -52,7 +52,7 @@ export default function ScreenshotAnnotator({ pbcItemId, fileName, onClose }: Pr
       // Load the image from base64 returned by server
       const src = `data:${data.mediaType};base64,${data.imageBase64}`;
       loadImage(src);
-      // Map AI boxes to local state
+      // Map AI boxes to local state with priority-based colors
       const aiBoxes: AnnotationBox[] = data.boxes.map((b: { x: number; y: number; w: number; h: number; label: string; reason: string; priority: string }) => ({
         id: randomId(),
         x: b.x,
@@ -66,6 +66,12 @@ export default function ScreenshotAnnotator({ pbcItemId, fileName, onClose }: Pr
       setBoxes(aiBoxes);
     },
   });
+
+  // Auto-trigger AI annotation immediately on open — zero clicks required
+  useEffect(() => {
+    annotate.mutate({ pbcItemId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function loadImage(src: string) {
     const img = new Image();
@@ -193,14 +199,14 @@ export default function ScreenshotAnnotator({ pbcItemId, fileName, onClose }: Pr
 
         {/* Toolbar */}
         <div style={{ background: "#F5F6FA", borderBottom: "1px solid #E5E7EB", padding: "10px 18px", display: "flex", alignItems: "center", gap: 18, flexShrink: 0, flexWrap: "wrap" }}>
-          {/* AI Analyze button */}
+          {/* AI status + re-analyze */}
           <button
-            onClick={() => annotate.mutate({ pbcItemId })}
+            onClick={() => { setBoxes([]); annotate.mutate({ pbcItemId }); }}
             disabled={isAnalyzing}
-            style={{ background: "#2E86DE", color: "#fff", border: "none", borderRadius: 7, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: isAnalyzing ? "default" : "pointer", display: "flex", alignItems: "center", gap: 6, opacity: isAnalyzing ? 0.7 : 1 }}
+            style={{ background: isAnalyzing ? "#6B7280" : "#2E86DE", color: "#fff", border: "none", borderRadius: 7, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: isAnalyzing ? "default" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
           >
             <Scan size={13} />
-            {isAnalyzing ? "Analyzing..." : "AI: Suggest Annotations"}
+            {isAnalyzing ? "AI Analyzing..." : "Re-Analyze"}
           </button>
 
           {/* Divider */}
@@ -225,9 +231,7 @@ export default function ScreenshotAnnotator({ pbcItemId, fileName, onClose }: Pr
           <div style={{ width: 1, height: 26, background: "#D1D5DB" }} />
 
           <span style={{ fontSize: 11, color: "#6B7280" }}>
-            {imageLoaded
-              ? "Drag on image to draw a box. Click box label to rename."
-              : "Click \"AI: Suggest Annotations\" to load and analyze the screenshot."}
+            {isAnalyzing ? "AI is analyzing..." : imageLoaded ? "Drag to draw a box. Double-click label to rename." : "Ready."}
           </span>
         </div>
 

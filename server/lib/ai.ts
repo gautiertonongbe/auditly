@@ -63,8 +63,13 @@ export async function generateWorkpaperWriteup(params: {
     receivedDate?: Date | null;
   }[];
   framework: string;
+  // Firm / engagement templates — AI MUST follow these if provided
+  procedureTemplate?: string | null;
+  resultsTemplate?: string | null;
+  conclusionTemplate?: string | null;
 }): Promise<{ procedure: string; results: string; conclusion: string }> {
   const domainGuidance = DOMAIN_GUIDANCE[params.controlType] ?? "";
+  const hasTemplates = !!(params.procedureTemplate || params.resultsTemplate || params.conclusionTemplate);
 
   // Fetch images for PBC items that are screenshots/images
   const imageItems: { index: number; img: { data: string; mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; fileName: string } }[] = [];
@@ -84,7 +89,31 @@ export async function generateWorkpaperWriteup(params: {
       }).join("\n")
     : "  No accepted PBC items on file yet.";
 
-  const textPrompt = `You are a Big 4 SOX audit manager writing workpaper documentation. Generate a professional, ${params.framework}-compliant writeup for the following control.
+  // Build template enforcement block — placed at the TOP of the prompt for maximum weight
+  const templateBlock = hasTemplates ? `
+╔══════════════════════════════════════════════════════════════════════════╗
+║  FIRM TEMPLATE — YOU MUST FOLLOW THIS STRUCTURE EXACTLY                 ║
+║  This template represents the firm's quality standard and client style. ║
+║  Fill in every [PLACEHOLDER] with real evidence data from the PBC list. ║
+║  Preserve ALL headers, numbering, and formatting from the template.     ║
+║  Do NOT add, remove, or reorder sections. Do NOT ignore the template.   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+${params.procedureTemplate ? `\nPROCEDURE TEMPLATE:\n${params.procedureTemplate}\n` : ""}
+${params.resultsTemplate ? `\nRESULTS TEMPLATE:\n${params.resultsTemplate}\n` : ""}
+${params.conclusionTemplate ? `\nCONCLUSION TEMPLATE:\n${params.conclusionTemplate}\n` : ""}
+` : "";
+
+  const defaultInstructions = !hasTemplates ? `
+Generate three sections in JSON format:
+1. "procedure": Testing procedure performed (3-5 sentences, past tense, professional ${params.framework} audit language). Reference each PBC item explicitly by its description and filename. For screenshots, describe what the image shows and how you used it as evidence.
+2. "results": Results of testing (2-3 sentences). Reference specific files/screenshots tested. Assume all ${params.sampleSize} sample items passed unless otherwise noted.
+3. "conclusion": One-sentence conclusion referencing the control objective and testing period.` : `
+Using the firm templates above, produce the three sections:
+- "procedure": Complete the PROCEDURE TEMPLATE by filling in all [PLACEHOLDER] markers with real data from the PBC evidence list. Keep the exact template structure.
+- "results": Complete the RESULTS TEMPLATE (or write 2-3 sentences if no results template was provided) based on testing of ${params.sampleSize} items.
+- "conclusion": Complete the CONCLUSION TEMPLATE (or one sentence if not provided) referencing the control objective.`;
+
+  const textPrompt = `${templateBlock}You are a Big 4 SOX audit manager writing workpaper documentation. Generate a professional, ${params.framework}-compliant writeup for the following control.
 
 Control Reference: ${params.controlRef}
 Domain: ${params.domain} - ${params.controlType}
@@ -97,11 +126,7 @@ Sample Size: ${params.sampleSize}
 PBC Evidence Received (${params.pbcItems.length} item${params.pbcItems.length !== 1 ? "s" : ""}):
 ${pbcSection}
 ${imageItems.length > 0 ? `\nIMPORTANT: ${imageItems.length} screenshot(s) are attached below. Examine each image carefully. Describe what is visible in the screenshot (system name, date ranges, columns, data visible) and reference it specifically in your writeup using the filename shown above.` : ""}
-
-Generate three sections in JSON format:
-1. "procedure": Testing procedure performed (3-5 sentences, past tense, professional PCAOB audit language). Reference each PBC item explicitly by its description and filename. For screenshots, describe what the image shows and how you used it as evidence.
-2. "results": Results of testing (2-3 sentences). Reference specific files/screenshots tested. Assume all ${params.sampleSize} sample items passed unless otherwise noted.
-3. "conclusion": One-sentence conclusion referencing the control objective and testing period.
+${defaultInstructions}
 
 Return ONLY valid JSON: { "procedure": "...", "results": "...", "conclusion": "..." }`;
 
