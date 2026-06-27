@@ -1,9 +1,10 @@
-import { useState, createContext, useContext, useEffect } from "react";
+import { useState, useRef, createContext, useContext, useEffect, useLayoutEffect } from "react";
 import { Route, Switch, Link, useLocation, useRoute } from "wouter";
 import {
   LayoutDashboard, Briefcase, ClipboardList, FileText,
   AlertTriangle, Database, Shield, BarChart2,
   Settings, LogOut, FileCheck2, GitMerge, Activity,
+  MessageCircle, X, Send, Bot, Loader2, ChevronDown,
 } from "lucide-react";
 import { trpc } from "./lib/trpc";
 import EngagementsPage from "./pages/Engagements";
@@ -92,6 +93,42 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
+// ── User color preference ────────────────────────────────────────────────────
+
+export const ACCENT_PRESETS = [
+  { name: "Blue",       value: "#2E86DE", light: "#EBF3FB" },
+  { name: "Indigo",     value: "#4F46E5", light: "#EEF2FF" },
+  { name: "Teal",       value: "#0D9488", light: "#CCFBF1" },
+  { name: "Violet",     value: "#7C3AED", light: "#EDE9FE" },
+  { name: "Rose",       value: "#E11D48", light: "#FFE4E6" },
+  { name: "Emerald",    value: "#059669", light: "#D1FAE5" },
+  { name: "Amber",      value: "#D97706", light: "#FEF3C7" },
+];
+
+export const ACCENT_STORAGE_KEY = "auditly_accent";
+
+function applyAccent(value: string, light: string) {
+  document.documentElement.style.setProperty("--user-accent", value);
+  document.documentElement.style.setProperty("--user-accent-light", light);
+  document.documentElement.style.setProperty("--accent", value);
+  document.documentElement.style.setProperty("--accent-light", light);
+}
+
+export function loadAccentPreference() {
+  try {
+    const stored = localStorage.getItem(ACCENT_STORAGE_KEY);
+    if (stored) {
+      const { value, light } = JSON.parse(stored) as { value: string; light: string };
+      applyAccent(value, light);
+    }
+  } catch { /* ignore */ }
+}
+
+export function saveAccentPreference(preset: typeof ACCENT_PRESETS[0]) {
+  localStorage.setItem(ACCENT_STORAGE_KEY, JSON.stringify({ value: preset.value, light: preset.light }));
+  applyAccent(preset.value, preset.light);
+}
+
 // NAV is engagement-context-aware: if an engagement is active, sub-links go to /engagements/:id/...
 // When no engagement selected, they link to /engagements to prompt selection
 const NAV = [
@@ -120,9 +157,17 @@ function Sidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
 
+  // Apply stored color preference on mount
+  useLayoutEffect(() => { loadAccentPreference(); }, []);
+
   // Extract engagement ID from current URL if on an engagement sub-page
   const engMatch = location.match(/^\/engagements\/([^/]+)/);
   const activeEngId = engMatch?.[1] ?? null;
+
+  // Fetch name of active engagement for context display (empty string returns null from server)
+  const { data: activeEng } = trpc.engagements.get.useQuery({ id: activeEngId ?? "" });
+
+  const needsEng = !activeEngId;
 
   return (
     <aside style={{
@@ -132,8 +177,8 @@ function Sidebar() {
       {/* Logo */}
       <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Shield size={18} color="#1E3A5F" />
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.25)" }}>
+            <Shield size={18} color="#fff" />
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, color: "#fff", letterSpacing: "-0.3px" }}>Auditly</div>
@@ -141,6 +186,15 @@ function Sidebar() {
           </div>
         </div>
       </div>
+
+      {/* Active engagement context pill */}
+      {activeEngId && activeEng && (
+        <div style={{ margin: "10px 12px 0", padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
+          <div style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 3 }}>Active engagement</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeEng.clientName}</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>{activeEng.fiscalYear} · {activeEng.framework}</div>
+        </div>
+      )}
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
@@ -150,25 +204,28 @@ function Sidebar() {
               {section}
             </div>
             {items.map((item) => {
+              const requiresEng = "pathKey" in item;
               const href = "path" in item
                 ? item.path
                 : activeEngId
                   ? `/engagements/${activeEngId}/${item.pathKey}`
                   : "/engagements";
               const active = location === href || (href !== "/" && location.startsWith(href));
+              const locked = requiresEng && needsEng;
               const Icon = item.icon;
               return (
                 <Link key={item.label} href={href}>
-                  <a style={{
+                  <a title={locked ? "Select an engagement first" : undefined} style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "8px 16px",
-                    color: active ? "#fff" : "rgba(255,255,255,0.6)",
-                    background: active ? "rgba(255,255,255,0.1)" : "transparent",
-                    borderLeft: active ? "3px solid var(--gold)" : "3px solid transparent",
+                    color: active ? "#fff" : locked ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.6)",
+                    background: active ? "rgba(255,255,255,0.12)" : "transparent",
+                    borderLeft: active ? "3px solid var(--accent)" : "3px solid transparent",
                     fontSize: 13, fontWeight: active ? 600 : 400,
                     transition: "all 0.15s", cursor: "pointer", textDecoration: "none",
                   }}>
                     <Icon size={15} />
-                    {item.label}
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    {locked && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>select eng.</span>}
                   </a>
                 </Link>
               );
@@ -185,7 +242,7 @@ function Sidebar() {
           </a>
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 4 }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--navy)", flexShrink: 0 }}>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
             {user?.name?.[0]?.toUpperCase() ?? "A"}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -201,6 +258,212 @@ function Sidebar() {
   );
 }
 
+// ── AI Help Chat ─────────────────────────────────────────────────────────────
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+const SUGGESTED = [
+  "How do I add controls to an engagement?",
+  "What sample size should I use for monthly controls?",
+  "How do I assess an exception as a Material Weakness?",
+  "Walk me through the PBC tracker workflow",
+];
+
+function HelpChat() {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [location] = useLocation();
+  const { user } = useAuth();
+
+  // Extract engagement/control context from URL
+  const engMatch = location.match(/\/engagements\/([^/]+)/);
+  const ctrlMatch = location.match(/\/controls\/([^/]+)/);
+  const engagementId = engMatch?.[1];
+  const controlId = ctrlMatch?.[1];
+
+  const sendMutation = trpc.ai.helpChat.useMutation();
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, open]);
+
+  async function send(text?: string) {
+    const msg = (text ?? input).trim();
+    if (!msg || loading) return;
+    setInput("");
+    const userMsg: ChatMessage = { role: "user", content: msg };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    setLoading(true);
+    try {
+      const res = await sendMutation.mutateAsync({
+        message: msg,
+        history: messages.slice(-10),
+        context: { page: location, engagementId, controlId },
+      });
+      setMessages([...next, { role: "assistant", content: res.reply }]);
+    } catch {
+      setMessages([...next, { role: "assistant", content: "Sorry, I ran into an error. Please try again." }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function renderContent(text: string) {
+    // Simple markdown-lite: bold **text**, line breaks, bullet points
+    return text.split("\n").map((line, i) => {
+      const parts = line.split(/\*\*(.*?)\*\*/g).map((p, j) =>
+        j % 2 === 1 ? <strong key={j}>{p}</strong> : p
+      );
+      const isBullet = line.trimStart().startsWith("- ") || line.trimStart().startsWith("• ");
+      return (
+        <div key={i} style={{ marginBottom: isBullet ? 2 : 4, paddingLeft: isBullet ? 12 : 0, position: "relative" }}>
+          {isBullet && <span style={{ position: "absolute", left: 0, color: "var(--accent)" }}>•</span>}
+          {isBullet ? parts.map((p, j) => typeof p === "string" ? p.replace(/^[-•]\s+/, "") : p) : parts}
+        </div>
+      );
+    });
+  }
+
+  if (!user) return null;
+
+  return (
+    <>
+      {/* Floating button */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Auditly Assistant"
+        style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 1000,
+          width: 52, height: 52, borderRadius: "50%",
+          background: "var(--accent)", border: "none", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+          transition: "transform 0.15s, box-shadow 0.15s",
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.08)"; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
+      >
+        {open ? <ChevronDown size={22} color="#fff" /> : <MessageCircle size={22} color="#fff" />}
+      </button>
+
+      {/* Chat panel */}
+      {open && (
+        <div style={{
+          position: "fixed", bottom: 88, right: 24, zIndex: 1000,
+          width: 380, height: 520, borderRadius: 16,
+          background: "var(--surface)", border: "1px solid var(--border)",
+          boxShadow: "0 8px 40px rgba(0,0,0,0.16)",
+          display: "flex", flexDirection: "column", overflow: "hidden",
+        }}>
+          {/* Header */}
+          <div style={{
+            background: "var(--navy)", padding: "14px 16px",
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Bot size={17} color="#fff" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Auditly Assistant</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>AI audit expert</div>
+            </div>
+            <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", padding: 4, display: "flex" }}>
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            {messages.length === 0 && (
+              <div>
+                <div style={{ textAlign: "center", padding: "20px 0 12px" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
+                    <Bot size={22} color="var(--accent)" />
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)" }}>Hi, {user.name.split(" ")[0]}!</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>I can answer audit questions, explain platform features, and help with your engagements.</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                  {SUGGESTED.map(s => (
+                    <button key={s} onClick={() => send(s)} style={{
+                      textAlign: "left", padding: "8px 12px", borderRadius: 8,
+                      border: "1px solid var(--border)", background: "var(--surface-alt)",
+                      fontSize: 12, color: "var(--text)", cursor: "pointer",
+                    }}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", flexDirection: m.role === "user" ? "row-reverse" : "row" }}>
+                {m.role === "assistant" && (
+                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Bot size={13} color="var(--accent)" />
+                  </div>
+                )}
+                <div style={{
+                  maxWidth: "82%", padding: "8px 12px", borderRadius: m.role === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
+                  background: m.role === "user" ? "var(--accent)" : "var(--surface-alt)",
+                  color: m.role === "user" ? "#fff" : "var(--text)",
+                  fontSize: 12.5, lineHeight: 1.55,
+                }}>
+                  {m.role === "assistant" ? renderContent(m.content) : m.content}
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Bot size={13} color="var(--accent)" />
+                </div>
+                <div style={{ padding: "8px 12px", borderRadius: "12px 12px 12px 4px", background: "var(--surface-alt)", display: "flex", gap: 4, alignItems: "center" }}>
+                  <Loader2 size={13} color="var(--text-muted)" style={{ animation: "spin 1s linear infinite" }} />
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Thinking...</span>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Input */}
+          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+              placeholder="Ask anything about your audit..."
+              style={{
+                flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)",
+                fontSize: 12.5, outline: "none", background: "var(--surface-alt)", color: "var(--text)",
+              }}
+            />
+            <button
+              onClick={() => send()}
+              disabled={!input.trim() || loading}
+              style={{
+                padding: "8px 12px", borderRadius: 8, border: "none",
+                background: input.trim() && !loading ? "var(--accent)" : "var(--border)",
+                color: "#fff", cursor: input.trim() && !loading ? "pointer" : "default",
+                display: "flex", alignItems: "center",
+              }}
+            >
+              <Send size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </>
+  );
+}
+
 // ── Layout ──────────────────────────────────────────────────────────────────
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -210,21 +473,59 @@ function Layout({ children }: { children: React.ReactNode }) {
       <main style={{ marginLeft: "var(--sidebar-width)", flex: 1, minHeight: "100vh", background: "var(--surface-alt)" }}>
         {children}
       </main>
+      <HelpChat />
     </div>
   );
 }
 
 // ── Pages (stubs — each will be a full component) ───────────────────────────
 
+const STEPS = [
+  { n: 1, title: "Create an engagement", desc: "Set up a new SOX audit engagement with your client, fiscal year, and framework.", href: "/engagements", cta: "Go to Engagements" },
+  { n: 2, title: "Add controls", desc: "Use PCAOB templates to add ITGC and ITAC controls to your engagement.", href: "/engagements", cta: "Add Controls" },
+  { n: 3, title: "Request PBC items", desc: "Request evidence from your client through the PBC Tracker.", href: "/engagements", cta: "Open PBC Tracker" },
+  { n: 4, title: "Generate workpapers", desc: "Let AI draft your workpaper procedures, results, and conclusions from uploaded evidence.", href: "/engagements", cta: "View Workpapers" },
+];
+
 function Dashboard() {
+  const { user } = useAuth();
   const { data: engagements } = trpc.engagements.list.useQuery();
   const active = engagements?.filter(e => e.status === "fieldwork" || e.status === "review") ?? [];
   const recent = engagements?.slice(0, 5) ?? [];
+  const isNew = engagements !== undefined && engagements.length === 0;
 
   return (
     <div style={{ padding: 32 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-strong)", marginBottom: 24 }}>Dashboard</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 32 }}>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-strong)", margin: 0 }}>
+          Welcome back, {user?.name?.split(" ")[0] ?? "Auditor"}
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Here's an overview of your active audit work.</p>
+      </div>
+
+      {/* Getting started guide for new users */}
+      {isNew && (
+        <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24, marginBottom: 28 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-strong)", marginBottom: 4 }}>Get started with Auditly</div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>Follow these steps to complete your first SOX audit engagement.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            {STEPS.map(s => (
+              <Link key={s.n} href={s.href}>
+                <a style={{ display: "block", padding: 16, borderRadius: 10, border: "1px solid var(--border)", textDecoration: "none", background: "var(--surface-alt)", transition: "border-color 0.15s" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
+                >
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--accent)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>{s.n}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-strong)", marginBottom: 4 }}>{s.title}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>{s.desc}</div>
+                </a>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 28 }}>
         {[
           { label: "Total Engagements", value: String(engagements?.length ?? 0), color: "var(--accent)" },
           { label: "Active (Fieldwork / Review)", value: String(active.length), color: "var(--navy)" },
@@ -237,10 +538,15 @@ function Dashboard() {
         ))}
       </div>
       <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Recent Engagements</div>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Recent Engagements</span>
+          <Link href="/engagements"><a style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>View all</a></Link>
+        </div>
         {recent.length === 0 ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-            No engagements yet. <Link href="/engagements"><a style={{ color: "var(--accent)", textDecoration: "none" }}>Create your first engagement</a></Link>
+          <div style={{ padding: 40, textAlign: "center" }}>
+            <Briefcase size={32} color="var(--border)" style={{ margin: "0 auto 12px", display: "block" }} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>No engagements yet</div>
+            <Link href="/engagements"><a style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>Create your first engagement</a></Link>
           </div>
         ) : (
           recent.map((eng, i) => (

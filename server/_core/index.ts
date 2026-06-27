@@ -28,7 +28,6 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many login attempts. Please try again in 15 minutes." },
-  keyGenerator: (req) => req.ip ?? "unknown",
   skip: () => process.env.NODE_ENV === "test",
 });
 
@@ -51,138 +50,129 @@ const apiLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === "test",
 });
 
-// ── Boot-time migrations ────────────────────────────────────────────────────
+// ── Boot-time migrations (MySQL/TiDB-compatible) ─────────────────────────────
 void (async () => {
-  try {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS portal_tokens (
-        id TEXT PRIMARY KEY,
-        token TEXT NOT NULL UNIQUE,
-        engagement_id TEXT NOT NULL,
-        client_name TEXT NOT NULL,
-        client_email TEXT,
-        created_by TEXT NOT NULL,
-        expires_at TIMESTAMPTZ NOT NULL,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    // Add new columns to pbc_items if they don't exist
-    await db.execute(sql`ALTER TABLE pbc_items ADD COLUMN IF NOT EXISTS file_content TEXT`);
-    await db.execute(sql`ALTER TABLE pbc_items ADD COLUMN IF NOT EXISTS ai_classification TEXT`);
-    // Workpaper template columns
-    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS procedure_template TEXT`);
-    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS results_template TEXT`);
-    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS conclusion_template TEXT`);
-    await db.execute(sql`ALTER TABLE workpapers ADD COLUMN IF NOT EXISTS template_id TEXT`);
-    // Reusable workpaper templates
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS workpaper_templates (
-        id TEXT PRIMARY KEY,
-        engagement_id TEXT REFERENCES engagements(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        control_type TEXT,
-        risk_level TEXT,
-        framework TEXT DEFAULT 'PCAOB',
-        procedure_template TEXT,
-        results_template TEXT,
-        conclusion_template TEXT,
-        use_count INTEGER NOT NULL DEFAULT 0,
-        tags TEXT,
-        created_by TEXT REFERENCES users(id),
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    // API connections (ServiceNow, Azure AD, Jira, GitHub, etc.)
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS api_connections (
-        id TEXT PRIMARY KEY,
-        engagement_id TEXT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
-        provider TEXT NOT NULL,
-        name TEXT NOT NULL,
-        base_url TEXT,
-        credentials TEXT,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        last_tested_at TIMESTAMPTZ,
-        last_test_result TEXT,
-        created_by TEXT REFERENCES users(id),
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    // Control → API system mapping
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS control_api_mappings (
-        id TEXT PRIMARY KEY,
-        control_id TEXT NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
-        api_connection_id TEXT NOT NULL REFERENCES api_connections(id) ON DELETE CASCADE,
-        query_config TEXT,
-        last_pulled_at TIMESTAMPTZ,
-        last_pull_status TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    // Cloud storage OAuth connections (Google Drive, OneDrive)
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS cloud_connections (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        provider TEXT NOT NULL,
-        access_token TEXT,
-        refresh_token TEXT,
-        token_expires_at TIMESTAMPTZ,
-        email TEXT,
-        display_name TEXT,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    // Control → cloud folder link
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS control_folder_links (
-        id TEXT PRIMARY KEY,
-        control_id TEXT NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
-        cloud_connection_id TEXT NOT NULL REFERENCES cloud_connections(id) ON DELETE CASCADE,
-        folder_id TEXT NOT NULL,
-        folder_name TEXT,
-        folder_path TEXT,
-        last_synced_at TIMESTAMPTZ,
-        last_sync_status TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    // Portal suggestions table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS portal_suggestions (
-        id TEXT PRIMARY KEY,
-        engagement_id TEXT NOT NULL,
-        portal_token_id TEXT NOT NULL,
-        client_name TEXT NOT NULL,
-        process_name TEXT NOT NULL,
-        system_name TEXT,
-        description TEXT NOT NULL,
-        contact_name TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        auditor_notes TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        reviewed_at TIMESTAMPTZ
-      )
-    `);
-    // SOC 2 + MFA + SSO columns on users
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_provider TEXT`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_id TEXT`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_secret TEXT`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_backup_codes TEXT`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`);
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ`);
-    console.log("[Migration] Portal tables and PBC columns ready");
-  } catch (err) {
-    console.error("[Migration] Non-fatal:", err);
-  }
+  const tryExec = async (statement: string) => {
+    try { await db.execute(sql.raw(statement)); } catch { /* column/table already exists */ }
+  };
+
+  await tryExec(`
+    CREATE TABLE IF NOT EXISTS portal_tokens (
+      id VARCHAR(36) PRIMARY KEY,
+      token VARCHAR(255) NOT NULL UNIQUE,
+      engagement_id VARCHAR(36) NOT NULL,
+      client_name TEXT NOT NULL,
+      client_email TEXT,
+      created_by VARCHAR(36) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await tryExec(`ALTER TABLE pbc_items ADD COLUMN file_content TEXT`);
+  await tryExec(`ALTER TABLE pbc_items ADD COLUMN ai_classification TEXT`);
+  await tryExec(`ALTER TABLE workpapers ADD COLUMN procedure_template TEXT`);
+  await tryExec(`ALTER TABLE workpapers ADD COLUMN results_template TEXT`);
+  await tryExec(`ALTER TABLE workpapers ADD COLUMN conclusion_template TEXT`);
+  await tryExec(`ALTER TABLE workpapers ADD COLUMN template_id VARCHAR(36)`);
+  await tryExec(`
+    CREATE TABLE IF NOT EXISTS workpaper_templates (
+      id VARCHAR(36) PRIMARY KEY,
+      engagement_id VARCHAR(36),
+      name TEXT NOT NULL,
+      control_type TEXT,
+      risk_level TEXT,
+      framework TEXT DEFAULT 'PCAOB',
+      procedure_template TEXT,
+      results_template TEXT,
+      conclusion_template TEXT,
+      use_count INT NOT NULL DEFAULT 0,
+      tags TEXT,
+      created_by VARCHAR(36),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await tryExec(`
+    CREATE TABLE IF NOT EXISTS api_connections (
+      id VARCHAR(36) PRIMARY KEY,
+      engagement_id VARCHAR(36) NOT NULL,
+      provider TEXT NOT NULL,
+      name TEXT NOT NULL,
+      base_url TEXT,
+      credentials TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_tested_at DATETIME,
+      last_test_result TEXT,
+      created_by VARCHAR(36),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await tryExec(`
+    CREATE TABLE IF NOT EXISTS control_api_mappings (
+      id VARCHAR(36) PRIMARY KEY,
+      control_id VARCHAR(36) NOT NULL,
+      api_connection_id VARCHAR(36) NOT NULL,
+      query_config TEXT,
+      last_pulled_at DATETIME,
+      last_pull_status TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await tryExec(`
+    CREATE TABLE IF NOT EXISTS cloud_connections (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      provider TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      token_expires_at DATETIME,
+      email TEXT,
+      display_name TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await tryExec(`
+    CREATE TABLE IF NOT EXISTS control_folder_links (
+      id VARCHAR(36) PRIMARY KEY,
+      control_id VARCHAR(36) NOT NULL,
+      cloud_connection_id VARCHAR(36) NOT NULL,
+      folder_id TEXT NOT NULL,
+      folder_name TEXT,
+      folder_path TEXT,
+      last_synced_at DATETIME,
+      last_sync_status TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await tryExec(`
+    CREATE TABLE IF NOT EXISTS portal_suggestions (
+      id VARCHAR(36) PRIMARY KEY,
+      engagement_id VARCHAR(36) NOT NULL,
+      portal_token_id VARCHAR(36) NOT NULL,
+      client_name TEXT NOT NULL,
+      process_name TEXT NOT NULL,
+      system_name TEXT,
+      description TEXT NOT NULL,
+      contact_name TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      auditor_notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at DATETIME
+    )
+  `);
+  await tryExec(`ALTER TABLE users ADD COLUMN sso_provider TEXT`);
+  await tryExec(`ALTER TABLE users ADD COLUMN sso_id TEXT`);
+  await tryExec(`ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
+  await tryExec(`ALTER TABLE users ADD COLUMN mfa_secret TEXT`);
+  await tryExec(`ALTER TABLE users ADD COLUMN mfa_backup_codes TEXT`);
+  await tryExec(`ALTER TABLE users ADD COLUMN failed_login_attempts INT NOT NULL DEFAULT 0`);
+  await tryExec(`ALTER TABLE users ADD COLUMN locked_until DATETIME`);
+  await tryExec(`ALTER TABLE users ADD COLUMN password_changed_at DATETIME`);
+  await tryExec(`ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE`);
+  await tryExec(`ALTER TABLE users ADD COLUMN last_activity_at DATETIME`);
+  console.log("[Migration] Boot-time migrations complete");
 })();
 
 // ── Health check ────────────────────────────────────────────────────────────

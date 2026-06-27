@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { User, Building2, Bell, Shield, Key, Save, Users, Plus, Trash2, Crown, ChevronDown, Smartphone, Copy, CheckCircle, AlertTriangle, Loader2, Zap, Cloud, RefreshCw, Unplug, Link2, X, HardDrive, FolderOpen } from "lucide-react";
+import { User, Building2, Bell, Shield, Key, Save, Users, Plus, Trash2, Crown, ChevronDown, Smartphone, Copy, CheckCircle, AlertTriangle, Loader2, Zap, Cloud, RefreshCw, Unplug, Link2, X, HardDrive, FolderOpen, Palette } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { ACCENT_PRESETS, saveAccentPreference, ACCENT_STORAGE_KEY } from "../App";
 
 type Tab = "profile" | "firm" | "team" | "notifications" | "security" | "integrations" | "cloud";
 
@@ -64,6 +65,13 @@ export default function SettingsPage() {
 function ProfileTab({ me }: { me?: { id: string; name: string; email: string; role: string } | null }) {
   const [form, setForm] = useState({ name: me?.name ?? "", email: me?.email ?? "", title: "", firm: "" });
   const update = trpc.users.updateProfile.useMutation();
+  const [activeAccent, setActiveAccent] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem(ACCENT_STORAGE_KEY);
+      if (stored) return (JSON.parse(stored) as { value: string }).value;
+    } catch { /* ignore */ }
+    return "#2E86DE";
+  });
 
   return (
     <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
@@ -99,6 +107,44 @@ function ProfileTab({ me }: { me?: { id: string; name: string; email: string; ro
         <div>
           <label style={lbl}>Firm / Organization</label>
           <input value={form.firm} onChange={e => setForm(f => ({ ...f, firm: e.target.value }))} placeholder="e.g. Deloitte" style={inp} />
+        </div>
+      </div>
+
+      {/* Theme Color */}
+      <div style={{ marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <Palette size={14} color="var(--accent)" />
+          <label style={{ ...lbl, margin: 0, color: "var(--text-strong)", fontWeight: 600 }}>Theme Color</label>
+        </div>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Choose your preferred accent color across the app.</p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {ACCENT_PRESETS.map(preset => {
+            const isActive = activeAccent === preset.value;
+            return (
+              <button
+                key={preset.value}
+                title={preset.name}
+                onClick={() => {
+                  saveAccentPreference(preset);
+                  setActiveAccent(preset.value);
+                }}
+                style={{
+                  width: 32, height: 32, borderRadius: "50%", border: isActive ? `3px solid ${preset.value}` : "3px solid transparent",
+                  background: preset.value, cursor: "pointer", padding: 0,
+                  outline: isActive ? `2px solid white` : "none",
+                  outlineOffset: isActive ? -5 : 0,
+                  boxShadow: isActive ? `0 0 0 2px ${preset.value}` : "0 1px 3px rgba(0,0,0,0.15)",
+                  transform: isActive ? "scale(1.15)" : "scale(1)",
+                  transition: "transform 0.15s, box-shadow 0.15s",
+                }}
+              />
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
+          Active: <span style={{ color: "var(--accent)", fontWeight: 600 }}>
+            {ACCENT_PRESETS.find(p => p.value === activeAccent)?.name ?? "Blue"}
+          </span>
         </div>
       </div>
 

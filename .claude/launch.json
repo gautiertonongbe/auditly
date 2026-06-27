@@ -3,8 +3,9 @@
   "configurations": [
     {
       "name": "auditly-client",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:client"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite"],
+      "cwd": "/Users/lemac/Desktop/Auditly/client",
       "port": 3000
     }
   ]

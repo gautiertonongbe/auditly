@@ -519,3 +519,55 @@ Return JSON: {
   const text = (response.content[0] as { text: string }).text;
   return JSON.parse(text);
 }
+
+// ── In-app AI Help Chat ───────────────────────────────────────────────────────
+
+export async function helpChat(params: {
+  message: string;
+  history: { role: "user" | "assistant"; content: string }[];
+  userName: string;
+  userRole: string;
+  currentPage?: string;
+  engagementSummary?: string;
+  engagementDetail?: string;
+}): Promise<string> {
+  const systemPrompt = `You are Auditly Assistant, an expert AI embedded inside Auditly — a SOX IT audit management platform used by internal audit teams and external auditors.
+
+You help auditors with:
+- Understanding platform features and navigation
+- SOX/ITGC/ITAC audit guidance (Change Management, Access Management, Computer Operations, Program Development, ITACs)
+- Interpreting their engagement data, control statuses, exceptions, and PBC items
+- Drafting workpaper procedures, test steps, and conclusions
+- Sampling guidance (MUS, attribute sampling, PCAOB/AICPA standards)
+- Exception severity assessment (Control Deficiency, Significant Deficiency, Material Weakness)
+- IPE testing, SOD analysis, and deficiency aggregation
+
+PLATFORM CONTEXT:
+User: ${params.userName} (${params.userRole})
+Current page: ${params.currentPage ?? "unknown"}
+
+${params.engagementSummary ? `USER'S ENGAGEMENTS:\n${params.engagementSummary}` : "No engagements yet."}
+
+${params.engagementDetail ? `\n${params.engagementDetail}` : ""}
+
+GUIDELINES:
+- Be concise and practical. Auditors are busy professionals.
+- When referencing platform features, be specific (e.g., "Go to Controls tab > click the control > open the Workpaper tab").
+- For audit guidance, cite standards where relevant (PCAOB AS 2201, AS 2315, COSO 2013, ISAE 3402).
+- Do not invent data about the user's engagements beyond what is provided above.
+- Format responses clearly: use short paragraphs, bullet points for lists, and bold key terms.`;
+
+  const messages = [
+    ...params.history.map(h => ({ role: h.role as "user" | "assistant", content: h.content })),
+    { role: "user" as const, content: params.message },
+  ];
+
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages,
+  });
+
+  return (response.content[0] as { text: string }).text;
+}

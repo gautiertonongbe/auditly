@@ -5,6 +5,7 @@
   --navy-light: #2A4F7C;
   --accent: #2E86DE;
   --accent-light: #EBF3FB;
+  --accent-hover: #1A6FC4;
   --gold: #D4AF37;
   --green: #27AE60;
   --red: #E74C3C;
@@ -17,6 +18,9 @@
   --text-strong: #0F172A;
   --sidebar-width: 240px;
   --header-height: 56px;
+  /* User preferred accent (overridable via JS) */
+  --user-accent: var(--accent);
+  --user-accent-light: var(--accent-light);
 }
 
 body {
