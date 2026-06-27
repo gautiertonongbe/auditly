@@ -7,6 +7,7 @@ import { TRPCError } from "@trpc/server";
 import { generateWorkpaperWriteup } from "../lib/ai";
 import { getSampleSize, getSamplingRationale, selectRandomSample } from "../lib/sampling";
 import { sendWorkpaperReviewRequest } from "../lib/email";
+import { getSystemPrompt, validateEvidence, agentSamplingAdvisor, agentExceptionDrafter } from "../lib/auditSkills";
 
 export const workpapersRouter = router({
   listByEngagement: protectedProcedure
@@ -275,9 +276,14 @@ export const workpapersRouter = router({
         : input.section === "conclusion" ? (wp.conclusionDraft ?? "")
         : `PROCEDURE:\n${wp.procedureDraft ?? ""}\n\nRESULTS:\n${wp.resultsDraft ?? ""}\n\nCONCLUSION:\n${wp.conclusionDraft ?? ""}`;
 
-      const systemPrompt = `You are a Big 4 SOX audit manager helping improve workpaper documentation for control ${ctrl.controlRef} (${ctrl.domain} - ${ctrl.itgcType ?? ctrl.itacType ?? ""}).
-The auditor will ask you to revise or improve specific sections. Return ONLY the revised text with no explanation, no markdown, no JSON wrapper.
-Write in professional past-tense audit language. Keep it concise and ${ctrl.domain}-specific.`;
+      // Use domain-specific PCAOB skill prompt for highest accuracy
+      const controlType = ctrl.itgcType ?? ctrl.itacType ?? null;
+      const domainSystemPrompt = getSystemPrompt(controlType);
+      const systemPrompt = `${domainSystemPrompt}
+
+You are currently helping revise the workpaper for control ${ctrl.controlRef}.
+The auditor will ask you to revise specific sections. Return ONLY the revised text with no explanation, no markdown, no JSON wrapper.
+Write in professional past-tense audit language.`;
 
       const response = await client.messages.create({
         model: "claude-sonnet-4-6",
@@ -312,5 +318,75 @@ Write in professional past-tense audit language. Keep it concise and ${ctrl.doma
       await ctx.db.update(workpapers).set(fieldMap[input.section] as object).where(eq(workpapers.id, input.workpaperId));
 
       return { revisedText, section: input.section };
+    }),
+
+  // ── Agent: Evidence Adequacy Validator ────────────────────────────────────
+  agentValidateEvidence: auditedProcedure
+    .input(z.object({ pbcItemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [item] = await ctx.db.select().from(pbcItems).where(eq(pbcItems.id, input.pbcItemId));
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!item.fileContent) throw new TRPCError({ code: "BAD_REQUEST", message: "No file content extracted. Upload the file first." });
+
+      let controlObjective = "General IT control";
+      let controlType: string | null = null;
+      if (item.controlId) {
+        const [ctrl] = await ctx.db.select().from(controls).where(eq(controls.id, item.controlId));
+        if (ctrl) { controlObjective = ctrl.objective; controlType = ctrl.itgcType ?? ctrl.itacType ?? null; }
+      }
+
+      const result = await validateEvidence({
+        controlObjective,
+        controlType,
+        pbcDescription: item.description,
+        fileContent: item.fileContent,
+        fileName: item.fileName ?? "unknown",
+      });
+
+      return result;
+    }),
+
+  // ── Agent: Sampling Advisor ───────────────────────────────────────────────
+  agentSamplingAdvisor: auditedProcedure
+    .input(z.object({ controlId: z.string(), populationCount: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const [ctrl] = await ctx.db.select().from(controls).where(eq(controls.id, input.controlId));
+      if (!ctrl) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const result = await agentSamplingAdvisor({
+        controlFrequency: ctrl.frequency,
+        populationCount: input.populationCount,
+        riskLevel: ctrl.riskLevel,
+        priorYearException: ctrl.priorYearResult === "ExceptionNoted",
+        controlType: ctrl.itgcType ?? ctrl.itacType ?? null,
+      });
+
+      return result;
+    }),
+
+  // ── Agent: Exception Drafter ─────────────────────────────────────────────
+  agentExceptionDrafter: auditedProcedure
+    .input(z.object({
+      workpaperId: z.string(),
+      exceptionDescription: z.string().min(10),
+      exceptionsFound: z.number().int().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [wp] = await ctx.db.select().from(workpapers).where(eq(workpapers.id, input.workpaperId));
+      if (!wp) throw new TRPCError({ code: "NOT_FOUND" });
+      const [ctrl] = await ctx.db.select().from(controls).where(eq(controls.id, wp.controlId));
+      if (!ctrl) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const result = await agentExceptionDrafter({
+        controlObjective: ctrl.objective,
+        controlRef: ctrl.controlRef,
+        exceptionDescription: input.exceptionDescription,
+        populationCount: wp.populationCount ?? 0,
+        sampleSize: wp.sampleSize ?? 0,
+        exceptionsFound: input.exceptionsFound,
+        controlType: ctrl.itgcType ?? ctrl.itacType ?? null,
+      });
+
+      return result;
     }),
 });

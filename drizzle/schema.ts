@@ -28,6 +28,19 @@ export const users = pgTable("users", {
   firmName: text("firm_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastLoginAt: timestamp("last_login_at"),
+  // SSO
+  ssoProvider: text("sso_provider"),         // "google" | "microsoft" | "saml" | null
+  ssoId: text("sso_id"),                     // external IdP subject ID
+  // MFA
+  mfaEnabled: boolean("mfa_enabled").notNull().default(false),
+  mfaSecret: text("mfa_secret"),             // TOTP secret (encrypted at rest in prod)
+  mfaBackupCodes: text("mfa_backup_codes"), // JSON array of hashed backup codes
+  // SOC 2 security
+  failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
+  lockedUntil: timestamp("locked_until"),
+  passwordChangedAt: timestamp("password_changed_at"),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  lastActivityAt: timestamp("last_activity_at"),
 });
 
 // ── Engagements ────────────────────────────────────────────────────────────
@@ -264,6 +277,23 @@ export const portalTokens = pgTable("portal_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Portal Control Suggestions ─────────────────────────────────────────────
+
+export const portalSuggestions = pgTable("portal_suggestions", {
+  id: text("id").primaryKey(),
+  engagementId: text("engagement_id").notNull().references(() => engagements.id),
+  portalTokenId: text("portal_token_id").notNull().references(() => portalTokens.id),
+  clientName: text("client_name").notNull(),
+  processName: text("process_name").notNull(),
+  systemName: text("system_name"),
+  description: text("description").notNull(),
+  contactName: text("contact_name"),
+  status: text("status").notNull().default("pending"), // pending | reviewed | added | declined
+  auditorNotes: text("auditor_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewed_at"),
 });
 
 // ── Export Log ─────────────────────────────────────────────────────────────

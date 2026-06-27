@@ -1,4 +1,4 @@
-import { useState, createContext, useContext } from "react";
+import { useState, createContext, useContext, useEffect } from "react";
 import { Route, Switch, Link, useLocation, useRoute } from "wouter";
 import {
   LayoutDashboard, Briefcase, ClipboardList, FileText,
@@ -19,6 +19,7 @@ import AnalyticsPage from "./pages/Analytics";
 import AuditTrailPage from "./pages/AuditTrail";
 import SettingsPage from "./pages/Settings";
 import ClientPortalPage from "./pages/ClientPortal";
+import SsoCallbackPage from "./pages/SsoCallback";
 
 // ── Auth Context ────────────────────────────────────────────────────────────
 
@@ -214,15 +215,76 @@ function Dashboard() {
 
 function LoginPage() {
   const { login } = useAuth();
-  const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: (data) => login(data.token, data.user),
-  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaStep, setMfaStep] = useState(false);
+  const [preAuthToken, setPreAuthToken] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const { data: providers } = trpc.auth.ssoProviders.useQuery();
+
+  const loginMutation = trpc.auth.login.useMutation({
+    onSuccess: (data) => {
+      if (data.mfaRequired && "preAuthToken" in data) {
+        setPreAuthToken(data.preAuthToken);
+        setMfaStep(true);
+      } else if (!data.mfaRequired && "token" in data) {
+        login(data.token, data.user);
+      }
+    },
+    onError: (e) => setErrorMsg(e.message),
+  });
+
+  const verifyMfa = trpc.auth.verifyMfa.useMutation({
+    onSuccess: (data) => login(data.token, data.user),
+    onError: (e) => setErrorMsg(e.message),
+  });
+
+  const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+
+  useEffect(() => { setErrorMsg(""); }, [email, password, mfaCode]);
+
+  const inputStyle: React.CSSProperties = { width: "100%", height: 42, border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", fontSize: 14, boxSizing: "border-box" };
+
+  if (mfaStep) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--navy)" }}>
+      <div style={{ width: 400, background: "var(--surface)", borderRadius: 16, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ background: "linear-gradient(135deg, var(--navy) 0%, #2A4F7C 100%)", padding: "28px 32px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Shield size={20} color="var(--navy)" />
+            </div>
+            <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>Auditly</span>
+          </div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", margin: 0 }}>Two-Factor Authentication</h2>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>Enter the 6-digit code from your authenticator app</p>
+        </div>
+        <div style={{ padding: 32 }}>
+          {errorMsg && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>{errorMsg}</div>}
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 6 }}>Authentication Code</label>
+            <input value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000" maxLength={6} autoFocus
+              style={{ ...inputStyle, fontSize: 22, letterSpacing: "0.3em", textAlign: "center", fontWeight: 700 }} />
+          </div>
+          <button onClick={() => verifyMfa.mutate({ preAuthToken, code: mfaCode })}
+            disabled={mfaCode.length !== 6 || verifyMfa.isPending}
+            style={{ width: "100%", height: 42, background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, opacity: mfaCode.length !== 6 ? 0.5 : 1, cursor: mfaCode.length !== 6 ? "not-allowed" : "pointer" }}>
+            {verifyMfa.isPending ? "Verifying..." : "Verify"}
+          </button>
+          <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", marginTop: 16 }}>
+            Lost access? Use a backup code above, or{" "}
+            <button onClick={() => setMfaStep(false)} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, padding: 0 }}>go back</button>.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--navy)" }}>
-      <div style={{ width: 400, background: "var(--surface)", borderRadius: 16, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+      <div style={{ width: 420, background: "var(--surface)", borderRadius: 16, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ background: "linear-gradient(135deg, var(--navy) 0%, #2A4F7C 100%)", padding: "32px 32px 28px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
             <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -231,31 +293,58 @@ function LoginPage() {
             <span style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>Auditly</span>
           </div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", margin: 0 }}>Sign in</h2>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>AI-native SOX audit platform</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>AI-native SOX audit platform for Big 4</p>
         </div>
+
         <div style={{ padding: 32 }}>
-          {loginMutation.error && (
-            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>
-              Invalid credentials
+          {/* SSO Buttons */}
+          {(providers?.google || providers?.microsoft || providers?.saml) && (
+            <div style={{ marginBottom: 24 }}>
+              {providers.google && (
+                <a href={`${API}/api/auth/sso/google`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", height: 42, borderRadius: 8, border: "1px solid var(--border)", background: "#fff", fontSize: 13, fontWeight: 600, color: "var(--text-strong)", textDecoration: "none", marginBottom: 10, cursor: "pointer", boxSizing: "border-box" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                  Continue with Google
+                </a>
+              )}
+              {providers.microsoft && (
+                <a href={`${API}/api/auth/sso/microsoft`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", height: 42, borderRadius: 8, border: "1px solid var(--border)", background: "#fff", fontSize: 13, fontWeight: 600, color: "var(--text-strong)", textDecoration: "none", marginBottom: 10, cursor: "pointer", boxSizing: "border-box" }}>
+                  <svg width="18" height="18" viewBox="0 0 21 21"><path fill="#F25022" d="M0 0h10v10H0z"/><path fill="#7FBA00" d="M11 0h10v10H11z"/><path fill="#00A4EF" d="M0 11h10v10H0z"/><path fill="#FFB900" d="M11 11h10v10H11z"/></svg>
+                  Continue with Microsoft
+                </a>
+              )}
+              {providers.saml && (
+                <a href={`${API}/api/auth/sso/saml`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", height: 42, borderRadius: 8, border: "1px solid var(--border)", background: "#fff", fontSize: 13, fontWeight: 600, color: "var(--text-strong)", textDecoration: "none", cursor: "pointer", boxSizing: "border-box" }}>
+                  <Shield size={16} color="#1E3A5F" />
+                  Continue with SSO / SAML
+                </a>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0" }}>
+                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>OR</span>
+                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              </div>
             </div>
           )}
+
+          {errorMsg && (
+            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>{errorMsg}</div>
+          )}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 6 }}>Email</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="you@firm.com"
-              style={{ width: "100%", height: 42, border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", fontSize: 14 }} />
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 6 }}>Work Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="you@firm.com" style={inputStyle} />
           </div>
           <div style={{ marginBottom: 24 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 6 }}>Password</label>
             <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="••••••••"
-              style={{ width: "100%", height: 42, border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", fontSize: 14 }} />
+              onKeyDown={e => e.key === "Enter" && loginMutation.mutate({ email, password })} style={inputStyle} />
           </div>
-          <button
-            onClick={() => loginMutation.mutate({ email, password })}
-            disabled={loginMutation.isPending}
-            style={{ width: "100%", height: 42, background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, opacity: loginMutation.isPending ? 0.7 : 1 }}
-          >
+          <button onClick={() => loginMutation.mutate({ email, password })} disabled={loginMutation.isPending || !email || !password}
+            style={{ width: "100%", height: 42, background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, opacity: (!email || !password) ? 0.6 : 1, cursor: (!email || !password) ? "not-allowed" : "pointer" }}>
             {loginMutation.isPending ? "Signing in..." : "Sign in"}
           </button>
+          <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 20, lineHeight: 1.6 }}>
+            Protected by enterprise-grade encryption · SOC 2 Type II
+          </p>
         </div>
       </div>
     </div>
@@ -265,9 +354,15 @@ function LoginPage() {
 // ── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  // Portal routes are public — render them before auth
+  // Public routes — render before auth wrapper
   const [isPortal] = useRoute("/portal/:token");
+  const [isSsoCallback] = useRoute("/sso-callback");
   if (isPortal) return <ClientPortalPage />;
+  if (isSsoCallback) return (
+    <AuthProvider>
+      <SsoCallbackPage />
+    </AuthProvider>
+  );
 
   return (
     <AuthProvider>
