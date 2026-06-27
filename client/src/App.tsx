@@ -283,7 +283,7 @@ function AppInner() {
         <Route path="/engagements/:id" component={EngagementDetailPage} />
         {/* Per-engagement sub-pages */}
         <Route path="/engagements/:id/controls" component={ControlsPage} />
-        <Route path="/engagements/:id/workpapers/:wpId" component={WorkpaperDetailPage} />
+        <Route path="/engagements/:engId/controls/:controlId" component={WorkpaperDetailPage} />
         <Route path="/engagements/:id/pbc" component={PbcTrackerPage} />
         <Route path="/engagements/:id/ipe" component={IpeRegisterPage} />
         <Route path="/engagements/:id/sod" component={SodAnalysisPage} />

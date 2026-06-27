@@ -2,6 +2,19 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Domain-specific procedure guidance injected into the AI prompt
+const DOMAIN_GUIDANCE: Record<string, string> = {
+  CM: "Change Management (CM): Focus on change ticket completeness, approval chain, testing sign-off before promotion, emergency change handling, and segregation between requester/approver/implementer.",
+  AM: "Access Management (AM): Focus on user provisioning/deprovisioning timeliness, quarterly user access reviews, privileged access justification, terminated user removal, and role appropriateness.",
+  CO: "Computer Operations (CO): Focus on job scheduler monitoring, backup completion and restore testing, incident ticket resolution, system availability SLAs, and capacity alerts.",
+  PD: "Program Development (PD): Focus on SDLC methodology adherence, unit/UAT testing evidence, business sign-off before go-live, and separation of development from production.",
+  Input: "ITAC Input: Focus on input validation controls, edit checks, error handling for rejected transactions, completeness of interface files, and reconciliation of source-to-system.",
+  Processing: "ITAC Processing: Focus on automated calculation accuracy, exception reporting, reprocessing controls, and reconciliation of processed totals to source data.",
+  Output: "ITAC Output: Focus on completeness and accuracy of reports/feeds, distribution controls, output reconciliation, and downstream system integrity.",
+  Interface: "ITAC Interface: Focus on interface monitoring, transmission completeness, error logs, reconciliation of record counts/amounts, and timely resolution of failed transmissions.",
+  IPE: "IPE (Information Produced by Entity): Focus on completeness testing (trace totals to source), accuracy testing (verify key fields against source records), system configuration verification, and parameter confirmation.",
+};
+
 export async function generateWorkpaperWriteup(params: {
   controlRef: string;
   controlObjective: string;
@@ -11,25 +24,34 @@ export async function generateWorkpaperWriteup(params: {
   riskLevel: string;
   population: string;
   sampleSize: number;
-  pbcDescription: string;
+  pbcItems: { description: string; fileName?: string | null; receivedDate?: Date | null }[];
   framework: string;
 }): Promise<{ procedure: string; results: string; conclusion: string }> {
+  const domainGuidance = DOMAIN_GUIDANCE[params.controlType] ?? "";
+
+  const pbcSection = params.pbcItems.length > 0
+    ? params.pbcItems.map((p, i) =>
+        `  PBC ${i + 1}: ${p.description}${p.fileName ? ` (File: ${p.fileName})` : ""}${p.receivedDate ? ` — received ${new Date(p.receivedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}`
+      ).join("\n")
+    : "  No accepted PBC items on file yet.";
+
   const prompt = `You are a Big 4 SOX audit manager writing workpaper documentation. Generate a professional, ${params.framework}-compliant writeup for the following control.
 
 Control Reference: ${params.controlRef}
 Domain: ${params.domain} - ${params.controlType}
-Objective: ${params.controlObjective}
+${domainGuidance ? `Testing Guidance: ${domainGuidance}\n` : ""}Objective: ${params.controlObjective}
 Frequency: ${params.frequency}
 Risk Level: ${params.riskLevel}
 Population: ${params.population}
 Sample Size: ${params.sampleSize}
-PBC Evidence Received: ${params.pbcDescription}
-Framework: ${params.framework}
+
+PBC Evidence Received (${params.pbcItems.length} item${params.pbcItems.length !== 1 ? "s" : ""}):
+${pbcSection}
 
 Generate three sections in JSON format:
-1. "procedure": Testing procedure performed (2-4 sentences, past tense, professional audit language)
-2. "results": Results of testing (2-3 sentences describing what was found in the sample, assume all pass unless told otherwise)
-3. "conclusion": One-sentence conclusion (Pass / No exceptions noted)
+1. "procedure": Testing procedure performed (3-5 sentences, past tense, professional audit language). IMPORTANT: Explicitly reference each PBC item by name/description when describing how evidence was obtained and tested. For example: "We obtained [PBC description] ([filename]) and agreed [X] items to [Y]."
+2. "results": Results of testing (2-3 sentences). Reference the specific evidence files tested. Assume all ${params.sampleSize} items passed unless otherwise noted.
+3. "conclusion": One-sentence conclusion referencing the control objective.
 
 Return ONLY valid JSON: { "procedure": "...", "results": "...", "conclusion": "..." }`;
 

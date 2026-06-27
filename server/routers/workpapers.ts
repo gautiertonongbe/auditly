@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
-import { workpapers, controls, auditTrail } from "../../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { workpapers, controls, pbcItems, engagementMembers, users, engagements, auditTrail } from "../../drizzle/schema";
+import { eq, and, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateWorkpaperWriteup } from "../lib/ai";
 import { getSampleSize, getSamplingRationale, selectRandomSample } from "../lib/sampling";
+import { sendWorkpaperReviewRequest } from "../lib/email";
 
 export const workpapersRouter = router({
   listByEngagement: protectedProcedure
@@ -68,6 +69,12 @@ export const workpapersRouter = router({
         control.priorYearResult === "ExceptionNoted"
       );
 
+      // Fetch accepted PBC items for this control so the AI can reference them specifically
+      const acceptedPbc = await ctx.db
+        .select({ description: pbcItems.description, fileName: pbcItems.fileName, receivedDate: pbcItems.receivedDate })
+        .from(pbcItems)
+        .where(and(eq(pbcItems.controlId, input.controlId), eq(pbcItems.status, "Accepted")));
+
       const aiResult = await generateWorkpaperWriteup({
         controlRef: control.controlRef,
         controlObjective: control.objective,
@@ -77,7 +84,7 @@ export const workpapersRouter = router({
         riskLevel: control.riskLevel,
         population: input.population ?? existingWp[0]?.populationDescription ?? "Not yet defined",
         sampleSize,
-        pbcDescription: "PBC received per tracker",
+        pbcItems: acceptedPbc,
         framework: "PCAOB",
       });
 
@@ -155,6 +162,155 @@ export const workpapersRouter = router({
         timestamp: new Date(),
       });
 
+      // When preparer signs off, notify the next reviewer (senior/manager/partner on the engagement)
+      if (input.level === "preparer") {
+        try {
+          const [wp] = await ctx.db.select().from(workpapers).where(eq(workpapers.id, input.workpaperId));
+          if (wp) {
+            // Get engagement members with review-level roles (exclude the preparer)
+            const members = await ctx.db
+              .select({ userId: engagementMembers.userId, role: engagementMembers.role })
+              .from(engagementMembers)
+              .where(eq(engagementMembers.engagementId, wp.engagementId));
+
+            const reviewerRoles = ["senior", "manager", "partner"];
+            const reviewerMember = members.find(
+              m => reviewerRoles.includes(m.role) && m.userId !== ctx.user.id
+            );
+
+            if (reviewerMember) {
+              const [reviewer] = await ctx.db
+                .select({ email: users.email, name: users.name })
+                .from(users)
+                .where(eq(users.id, reviewerMember.userId));
+
+              const [preparerUser] = await ctx.db
+                .select({ name: users.name })
+                .from(users)
+                .where(eq(users.id, ctx.user.id));
+
+              const [ctrl] = await ctx.db
+                .select({ controlRef: controls.controlRef })
+                .from(controls)
+                .where(eq(controls.id, wp.controlId));
+
+              const [engagement] = await ctx.db
+                .select({ clientName: engagements.clientName })
+                .from(engagements)
+                .where(eq(engagements.id, wp.engagementId));
+
+              if (reviewer && ctrl && engagement) {
+                await sendWorkpaperReviewRequest({
+                  toEmail: reviewer.email,
+                  toName: reviewer.name,
+                  fromName: preparerUser?.name ?? "Your colleague",
+                  controlRef: ctrl.controlRef,
+                  engagementClient: engagement.clientName,
+                  workpaperId: input.workpaperId,
+                  engagementId: wp.engagementId,
+                });
+              }
+            }
+          }
+        } catch (err) {
+          // Email failure should not break sign-off
+          console.error("[signOff] Email notification failed:", err);
+        }
+      }
+
       return { success: true };
+    }),
+
+  addReviewComment: auditedProcedure
+    .input(z.object({
+      workpaperId: z.string(),
+      comment: z.string().min(1),
+      sectionRef: z.string().optional(), // "procedure" | "results" | "conclusion" | null for general
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [wp] = await ctx.db.select().from(workpapers).where(eq(workpapers.id, input.workpaperId));
+      if (!wp) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const existing = (wp.reviewNotes ?? "") as string;
+      const [commenter] = await ctx.db.select({ name: users.name }).from(users).where(eq(users.id, ctx.user.id));
+      const timestamp = new Date().toISOString();
+      const prefix = input.sectionRef ? `[${input.sectionRef.toUpperCase()}] ` : "";
+      const newEntry = `[${timestamp}] ${commenter?.name ?? "Reviewer"}: ${prefix}${input.comment}`;
+      const updated = existing ? `${existing}\n${newEntry}` : newEntry;
+
+      await ctx.db.update(workpapers).set({ reviewNotes: updated, updatedAt: new Date() }).where(eq(workpapers.id, input.workpaperId));
+
+      await ctx.db.insert(auditTrail).values({
+        id: randomUUID(),
+        entityType: "workpaper",
+        entityId: input.workpaperId,
+        action: "review_comment",
+        description: `Review comment added${input.sectionRef ? ` on ${input.sectionRef}` : ""}`,
+        userId: ctx.user.id,
+        timestamp: new Date(),
+      });
+
+      return { success: true };
+    }),
+
+  chatImprove: auditedProcedure
+    .input(z.object({
+      workpaperId: z.string(),
+      userMessage: z.string().min(1),
+      section: z.enum(["procedure", "results", "conclusion", "all"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [wp] = await ctx.db.select().from(workpapers).where(eq(workpapers.id, input.workpaperId));
+      if (!wp) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const [ctrl] = await ctx.db.select().from(controls).where(eq(controls.id, wp.controlId));
+      if (!ctrl) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const Anthropic = (await import("@anthropic-ai/sdk")).default;
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+      const currentContent =
+        input.section === "procedure" ? (wp.procedureDraft ?? "")
+        : input.section === "results" ? (wp.resultsDraft ?? "")
+        : input.section === "conclusion" ? (wp.conclusionDraft ?? "")
+        : `PROCEDURE:\n${wp.procedureDraft ?? ""}\n\nRESULTS:\n${wp.resultsDraft ?? ""}\n\nCONCLUSION:\n${wp.conclusionDraft ?? ""}`;
+
+      const systemPrompt = `You are a Big 4 SOX audit manager helping improve workpaper documentation for control ${ctrl.controlRef} (${ctrl.domain} - ${ctrl.itgcType ?? ctrl.itacType ?? ""}).
+The auditor will ask you to revise or improve specific sections. Return ONLY the revised text with no explanation, no markdown, no JSON wrapper.
+Write in professional past-tense audit language. Keep it concise and ${ctrl.domain}-specific.`;
+
+      const response = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: `Current ${input.section} section:\n\n${currentContent}\n\n---\n\nInstruction: ${input.userMessage}` },
+        ],
+      });
+
+      const revisedText = (response.content[0] as { text: string }).text.trim();
+
+      // Auto-apply the revision to the draft fields
+      const fieldMap: Record<string, object> = {
+        procedure: { procedureDraft: revisedText, updatedAt: new Date() },
+        results:   { resultsDraft: revisedText, updatedAt: new Date() },
+        conclusion: { conclusionDraft: revisedText, updatedAt: new Date() },
+        all: (() => {
+          // "all" response comes back as three labeled sections; try to parse
+          const pMatch = revisedText.match(/PROCEDURE:\s*([\s\S]*?)(?=\n\nRESULTS:|$)/i);
+          const rMatch = revisedText.match(/RESULTS:\s*([\s\S]*?)(?=\n\nCONCLUSION:|$)/i);
+          const cMatch = revisedText.match(/CONCLUSION:\s*([\s\S]*?)$/i);
+          return {
+            procedureDraft: pMatch?.[1]?.trim() ?? wp.procedureDraft,
+            resultsDraft: rMatch?.[1]?.trim() ?? wp.resultsDraft,
+            conclusionDraft: cMatch?.[1]?.trim() ?? wp.conclusionDraft,
+            updatedAt: new Date(),
+          };
+        })(),
+      };
+
+      await ctx.db.update(workpapers).set(fieldMap[input.section] as object).where(eq(workpapers.id, input.workpaperId));
+
+      return { revisedText, section: input.section };
     }),
 });
