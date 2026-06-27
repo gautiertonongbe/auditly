@@ -1,12 +1,23 @@
-import { useState, createContext, useContext, useEffect } from "react";
+import { useState, createContext, useContext } from "react";
 import { Route, Switch, Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Briefcase, ClipboardList, FileText,
-  AlertTriangle, Database, Users, Shield, BarChart2,
-  Settings, LogOut, ChevronRight, FileCheck2, GitMerge,
-  Activity, Bell
+  AlertTriangle, Database, Shield, BarChart2,
+  Settings, LogOut, FileCheck2, GitMerge, Activity,
 } from "lucide-react";
 import { trpc } from "./lib/trpc";
+import EngagementsPage from "./pages/Engagements";
+import EngagementDetailPage from "./pages/EngagementDetail";
+import ControlsPage from "./pages/Controls";
+import WorkpaperDetailPage from "./pages/WorkpaperDetail";
+import PbcTrackerPage from "./pages/PbcTracker";
+import IpeRegisterPage from "./pages/IpeRegister";
+import SodAnalysisPage from "./pages/SodAnalysis";
+import ExceptionsPage from "./pages/Exceptions";
+import DeficiencyAssessmentPage from "./pages/DeficiencyAssessment";
+import AnalyticsPage from "./pages/Analytics";
+import AuditTrailPage from "./pages/AuditTrail";
+import SettingsPage from "./pages/Settings";
 
 // ── Auth Context ────────────────────────────────────────────────────────────
 
@@ -29,31 +40,37 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
+// NAV is engagement-context-aware: if an engagement is active, sub-links go to /engagements/:id/...
+// When no engagement selected, they link to /engagements to prompt selection
 const NAV = [
   { section: "Overview", items: [
     { label: "Dashboard", icon: LayoutDashboard, path: "/" },
     { label: "Engagements", icon: Briefcase, path: "/engagements" },
   ]},
   { section: "Testing", items: [
-    { label: "Controls", icon: ClipboardList, path: "/controls" },
-    { label: "Workpapers", icon: FileText, path: "/workpapers" },
-    { label: "PBC Tracker", icon: FileCheck2, path: "/pbc" },
-    { label: "IPE Register", icon: Database, path: "/ipe" },
-    { label: "SOD Analysis", icon: GitMerge, path: "/sod" },
+    { label: "Controls", icon: ClipboardList, pathKey: "controls" },
+    { label: "Workpapers", icon: FileText, pathKey: "workpapers" },
+    { label: "PBC Tracker", icon: FileCheck2, pathKey: "pbc" },
+    { label: "IPE Register", icon: Database, pathKey: "ipe" },
+    { label: "SOD Analysis", icon: GitMerge, pathKey: "sod" },
   ]},
   { section: "Findings", items: [
-    { label: "Exceptions", icon: AlertTriangle, path: "/exceptions" },
-    { label: "Deficiency Assessment", icon: Shield, path: "/deficiency" },
+    { label: "Exceptions", icon: AlertTriangle, pathKey: "exceptions" },
+    { label: "Deficiency Assessment", icon: Shield, pathKey: "deficiency" },
   ]},
   { section: "Reports", items: [
-    { label: "Analytics", icon: BarChart2, path: "/analytics" },
-    { label: "Audit Trail", icon: Activity, path: "/audit-trail" },
+    { label: "Analytics", icon: BarChart2, pathKey: "analytics" },
+    { label: "Audit Trail", icon: Activity, pathKey: "audit-trail" },
   ]},
 ];
 
 function Sidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+
+  // Extract engagement ID from current URL if on an engagement sub-page
+  const engMatch = location.match(/^\/engagements\/([^/]+)/);
+  const activeEngId = engMatch?.[1] ?? null;
 
   return (
     <aside style={{
@@ -80,10 +97,16 @@ function Sidebar() {
             <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.35)", padding: "8px 16px 4px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
               {section}
             </div>
-            {items.map(({ label, icon: Icon, path }) => {
-              const active = location === path || (path !== "/" && location.startsWith(path));
+            {items.map((item) => {
+              const href = "path" in item
+                ? item.path
+                : activeEngId
+                  ? `/engagements/${activeEngId}/${item.pathKey}`
+                  : "/engagements";
+              const active = location === href || (href !== "/" && location.startsWith(href));
+              const Icon = item.icon;
               return (
-                <Link key={path} href={path}>
+                <Link key={item.label} href={href}>
                   <a style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "8px 16px",
                     color: active ? "#fff" : "rgba(255,255,255,0.6)",
@@ -93,7 +116,7 @@ function Sidebar() {
                     transition: "all 0.15s", cursor: "pointer", textDecoration: "none",
                   }}>
                     <Icon size={15} />
-                    {label}
+                    {item.label}
                   </a>
                 </Link>
               );
@@ -142,15 +165,18 @@ function Layout({ children }: { children: React.ReactNode }) {
 // ── Pages (stubs — each will be a full component) ───────────────────────────
 
 function Dashboard() {
+  const { data: engagements } = trpc.engagements.list.useQuery();
+  const active = engagements?.filter(e => e.status === "Fieldwork" || e.status === "UnderReview") ?? [];
+  const recent = engagements?.slice(0, 5) ?? [];
+
   return (
     <div style={{ padding: 32 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-strong)", marginBottom: 24 }}>Dashboard</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 32 }}>
         {[
-          { label: "Active Engagements", value: "—", color: "var(--accent)" },
-          { label: "Controls In Progress", value: "—", color: "var(--orange)" },
-          { label: "Open Exceptions", value: "—", color: "var(--red)" },
-          { label: "PBC Items Outstanding", value: "—", color: "var(--navy)" },
+          { label: "Total Engagements", value: String(engagements?.length ?? 0), color: "var(--accent)" },
+          { label: "Active (Fieldwork / Review)", value: String(active.length), color: "var(--navy)" },
+          { label: "Complete", value: String(engagements?.filter(e => e.status === "Complete").length ?? 0), color: "#27AE60" },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: "var(--surface)", borderRadius: 12, padding: 20, border: "1px solid var(--border)" }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{label}</div>
@@ -158,29 +184,32 @@ function Dashboard() {
           </div>
         ))}
       </div>
-      <div style={{ background: "var(--surface)", borderRadius: 12, padding: 24, border: "1px solid var(--border)" }}>
-        <p style={{ color: "var(--text-muted)" }}>Select an engagement from the Engagements page to get started.</p>
+      <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Recent Engagements</div>
+        {recent.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+            No engagements yet. <Link href="/engagements"><a style={{ color: "var(--accent)", textDecoration: "none" }}>Create your first engagement</a></Link>
+          </div>
+        ) : (
+          recent.map((eng, i) => (
+            <Link key={eng.id} href={`/engagements/${eng.id}`}>
+              <a style={{ display: "flex", alignItems: "center", padding: "14px 20px", borderBottom: i < recent.length - 1 ? "1px solid var(--border)" : "none", textDecoration: "none", background: i % 2 === 0 ? "#fff" : "var(--surface-alt)" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-strong)" }}>{eng.clientName}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{eng.fiscalYear} · {eng.framework}</div>
+                </div>
+                <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 10, background: eng.status === "Fieldwork" ? "#EBF3FB" : eng.status === "Complete" ? "#EAFAF1" : "var(--surface-alt)", color: eng.status === "Fieldwork" ? "#2E86DE" : eng.status === "Complete" ? "#27AE60" : "var(--text-muted)", fontWeight: 600 }}>
+                  {eng.status}
+                </span>
+              </a>
+            </Link>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-function Engagements() {
-  return (
-    <div style={{ padding: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-strong)" }}>Engagements</h1>
-        <button style={{ background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 600 }}>
-          + New Engagement
-        </button>
-      </div>
-      <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 40, textAlign: "center" }}>
-        <Briefcase size={32} color="var(--border)" />
-        <p style={{ color: "var(--text-muted)", marginTop: 12 }}>No engagements yet. Create your first SOX engagement.</p>
-      </div>
-    </div>
-  );
-}
 
 function LoginPage() {
   const { login } = useAuth();
@@ -249,17 +278,23 @@ function AppInner() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/engagements" component={Engagements} />
-        <Route path="/controls"><div style={{ padding: 32 }}><h1>Controls</h1></div></Route>
-        <Route path="/workpapers"><div style={{ padding: 32 }}><h1>Workpapers</h1></div></Route>
-        <Route path="/pbc"><div style={{ padding: 32 }}><h1>PBC Tracker</h1></div></Route>
-        <Route path="/ipe"><div style={{ padding: 32 }}><h1>IPE Register</h1></div></Route>
-        <Route path="/sod"><div style={{ padding: 32 }}><h1>SOD Analysis</h1></div></Route>
-        <Route path="/exceptions"><div style={{ padding: 32 }}><h1>Exceptions</h1></div></Route>
-        <Route path="/deficiency"><div style={{ padding: 32 }}><h1>Deficiency Assessment</h1></div></Route>
-        <Route path="/analytics"><div style={{ padding: 32 }}><h1>Analytics</h1></div></Route>
-        <Route path="/audit-trail"><div style={{ padding: 32 }}><h1>Audit Trail</h1></div></Route>
-        <Route path="/settings"><div style={{ padding: 32 }}><h1>Settings</h1></div></Route>
+        {/* Engagements */}
+        <Route path="/engagements" component={EngagementsPage} />
+        <Route path="/engagements/:id" component={EngagementDetailPage} />
+        {/* Per-engagement sub-pages */}
+        <Route path="/engagements/:id/controls" component={ControlsPage} />
+        <Route path="/engagements/:id/workpapers/:wpId" component={WorkpaperDetailPage} />
+        <Route path="/engagements/:id/pbc" component={PbcTrackerPage} />
+        <Route path="/engagements/:id/ipe" component={IpeRegisterPage} />
+        <Route path="/engagements/:id/sod" component={SodAnalysisPage} />
+        <Route path="/engagements/:id/exceptions" component={ExceptionsPage} />
+        <Route path="/engagements/:id/deficiency" component={DeficiencyAssessmentPage} />
+        <Route path="/engagements/:id/analytics" component={AnalyticsPage} />
+        <Route path="/engagements/:id/audit-trail" component={AuditTrailPage} />
+        {/* Global settings */}
+        <Route path="/settings" component={SettingsPage} />
+        {/* Fallback */}
+        <Route><div style={{ padding: 32, color: "var(--text-muted)" }}>Page not found.</div></Route>
       </Switch>
     </Layout>
   );

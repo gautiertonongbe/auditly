@@ -10,6 +10,7 @@ import { sodRouter } from "./sod";
 import { aiRouter } from "./ai";
 import { exportRouter } from "./export";
 import { auditTrailRouter } from "./auditTrail";
+import { usersRouter } from "./users";
 
 export const appRouter = router({
   auth: authRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   ai: aiRouter,
   export: exportRouter,
   auditTrail: auditTrailRouter,
+  users: usersRouter,
 });
 
 export type AppRouter = typeof appRouter;

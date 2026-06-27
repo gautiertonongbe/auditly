@@ -8,6 +8,17 @@ import { generateWorkpaperWriteup } from "../lib/ai";
 import { getSampleSize, getSamplingRationale, selectRandomSample } from "../lib/sampling";
 
 export const workpapersRouter = router({
+  listByEngagement: protectedProcedure
+    .input(z.object({ engagementId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const ctls = await ctx.db.select({ id: controls.id }).from(controls).where(eq(controls.engagementId, input.engagementId));
+      if (!ctls.length) return [];
+      const all = await Promise.all(ctls.map(c =>
+        ctx.db.select().from(workpapers).where(eq(workpapers.controlId, c.id))
+      ));
+      return all.flat();
+    }),
+
   getByControl: protectedProcedure
     .input(z.object({ controlId: z.string() }))
     .query(async ({ ctx, input }) => {
