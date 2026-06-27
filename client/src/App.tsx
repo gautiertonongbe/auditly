@@ -611,7 +611,10 @@ function LoginPage() {
             <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Shield size={20} color="var(--navy)" />
             </div>
-            <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>Auditly</span>
+            <div>
+              <span style={{ fontSize: 18, fontWeight: 700, color: "#fff", letterSpacing: "-0.3px" }}>Auditly</span>
+              <span style={{ fontSize: 10, fontWeight: 500, color: "rgba(255,255,255,0.45)", marginLeft: 8, letterSpacing: "0.05em", textTransform: "uppercase" }}>AI-Native SOX Audit Platform</span>
+            </div>
           </div>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", margin: 0 }}>Two-Factor Authentication</h2>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>Enter the 6-digit code from your authenticator app</p>
@@ -646,10 +649,13 @@ function LoginPage() {
             <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Shield size={20} color="var(--navy)" />
             </div>
-            <span style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>Auditly</span>
+            <div>
+              <span style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.3px" }}>Auditly</span>
+              <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.45)", marginLeft: 8, letterSpacing: "0.05em", textTransform: "uppercase" }}>AI-Native SOX Audit Platform</span>
+            </div>
           </div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", margin: 0 }}>Sign in</h2>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>AI-native SOX audit platform for Big 4</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>Welcome back. Enter your credentials to continue.</p>
         </div>
 
         <div style={{ padding: 32 }}>
