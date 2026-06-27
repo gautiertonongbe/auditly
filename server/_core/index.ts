@@ -1,4 +1,6 @@
 import express from "express";
+import { join } from "path";
+import { existsSync } from "fs";
 import cors from "cors";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
@@ -482,8 +484,6 @@ app.use("/api/trpc", apiLimiter, createExpressMiddleware({ router: appRouter, cr
 
 // ── Serve built SPA in production ────────────────────────────────────────────
 if (process.env.NODE_ENV === "production") {
-  const { join } = await import("path");
-  const { existsSync } = await import("fs");
   const distPath = join(process.cwd(), "dist/public");
   if (existsSync(distPath)) {
     app.use(express.static(distPath));
