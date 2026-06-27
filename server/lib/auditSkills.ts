@@ -290,6 +290,110 @@ Recommend the appropriate sample size and method. Respond in JSON:
   }
 }
 
+// ── Peer Review Agent (second-pass QC) ───────────────────────────────────────
+
+export type PeerReviewResult = {
+  overallScore: number;           // 0-100
+  overallRating: "Pass" | "Pass with Comments" | "Revise Required";
+  issues: {
+    section: "procedure" | "results" | "conclusion";
+    severity: "Critical" | "Significant" | "Informational";
+    finding: string;
+    suggestion: string;
+  }[];
+  revisedProcedure?: string;
+  revisedResults?: string;
+  revisedConclusion?: string;
+  reviewerNotes: string;
+};
+
+export async function agentPeerReview(params: {
+  controlRef: string;
+  controlObjective: string;
+  controlType: string | null;
+  frequency: string;
+  riskLevel: string;
+  sampleSize: number;
+  populationCount: number;
+  procedure: string;
+  results: string;
+  conclusion: string;
+  pbcSummary: string;
+}): Promise<PeerReviewResult> {
+  const domainContext = DOMAIN_PROMPTS[params.controlType ?? ""] ?? "";
+
+  const prompt = `
+You are a PCAOB audit quality reviewer performing a second-pass independent review of a workpaper written by a junior auditor.
+
+CONTROL: ${params.controlRef}
+OBJECTIVE: ${params.controlObjective}
+DOMAIN: ${params.controlType ?? "General ITGC"}
+FREQUENCY: ${params.frequency} | RISK: ${params.riskLevel}
+SAMPLE SIZE: ${params.sampleSize} / POPULATION: ${params.populationCount}
+
+PBC EVIDENCE SUMMARY:
+${params.pbcSummary}
+
+${domainContext ? `DOMAIN REQUIREMENTS:\n${domainContext}\n` : ""}
+DRAFT WORKPAPER:
+
+PROCEDURE PERFORMED:
+${params.procedure}
+
+RESULTS:
+${params.results}
+
+CONCLUSION:
+${params.conclusion}
+
+YOUR TASK: Review this workpaper as an independent PCAOB quality reviewer. Check for:
+1. Are all required procedure elements present for this control domain?
+2. Does the procedure reference each PBC item by name?
+3. Are results quantified with actual sample sizes and exception rates?
+4. Does the conclusion clearly state whether the control operated effectively?
+5. Is the language PCAOB-compliant (past tense, professional, specific)?
+6. Are there any logical gaps, unsupported conclusions, or missing references?
+
+Respond ONLY in valid JSON:
+{
+  "overallScore": <0-100>,
+  "overallRating": "Pass" | "Pass with Comments" | "Revise Required",
+  "issues": [
+    {
+      "section": "procedure" | "results" | "conclusion",
+      "severity": "Critical" | "Significant" | "Informational",
+      "finding": "<what is wrong or missing>",
+      "suggestion": "<specific corrective action>"
+    }
+  ],
+  "revisedProcedure": "<improved procedure if Critical issues found, else omit>",
+  "revisedResults": "<improved results if Critical issues found, else omit>",
+  "revisedConclusion": "<improved conclusion if Critical issues found, else omit>",
+  "reviewerNotes": "<1-2 sentence overall quality assessment>"
+}
+`.trim();
+
+  const msg = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    messages: [{ role: "user", content: prompt }],
+    system: "You are a PCAOB audit quality reviewer. Respond ONLY with valid JSON. Be specific and actionable.",
+  });
+
+  const text = (msg.content[0] as { type: "text"; text: string }).text;
+  try {
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    return JSON.parse(match ? match[1] : text) as PeerReviewResult;
+  } catch {
+    return {
+      overallScore: 70,
+      overallRating: "Pass with Comments",
+      issues: [],
+      reviewerNotes: text.slice(0, 300),
+    };
+  }
+}
+
 // ── Exception Drafter Agent ───────────────────────────────────────────────────
 
 export async function agentExceptionDrafter(params: {

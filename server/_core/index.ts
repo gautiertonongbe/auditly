@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers/index";
 import { createContext } from "./context";
@@ -17,6 +18,37 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "50mb" }));
+
+// ── SOC 2 Rate Limiting ──────────────────────────────────────────────────────
+// Auth routes: 10 attempts per 15 minutes per IP (prevents brute-force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please try again in 15 minutes." },
+  keyGenerator: (req) => req.ip ?? "unknown",
+  skip: () => process.env.NODE_ENV === "test",
+});
+
+// File upload: 30 uploads per 10 minutes per IP
+const uploadLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many file uploads. Please slow down." },
+  skip: () => process.env.NODE_ENV === "test",
+});
+
+// General API: 300 requests per minute per IP
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === "test",
+});
 
 // ── Boot-time migrations ────────────────────────────────────────────────────
 void (async () => {
@@ -213,8 +245,15 @@ app.post("/api/portal/:token/upload/:pbcItemId", upload.single("file"), async (r
 // ── SSO routes ───────────────────────────────────────────────────────────────
 app.use("/api/auth/sso", buildSSORouter());
 
-// ── tRPC ────────────────────────────────────────────────────────────────────
-app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
+// ── tRPC (with rate limiters on sensitive paths) ─────────────────────────────
+// Auth procedures get the strict limiter
+app.use("/api/trpc/auth.login", authLimiter);
+app.use("/api/trpc/auth.register", authLimiter);
+app.use("/api/trpc/auth.verifyMfa", authLimiter);
+// File operations get the upload limiter
+app.use("/api/upload", uploadLimiter);
+// All other API traffic gets the general limiter
+app.use("/api/trpc", apiLimiter, createExpressMiddleware({ router: appRouter, createContext }));
 
 app.listen(PORT, () => {
   console.log(`[Auditly] Server running on port ${PORT}`);

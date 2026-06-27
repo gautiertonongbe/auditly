@@ -7,7 +7,7 @@ import { TRPCError } from "@trpc/server";
 import { generateWorkpaperWriteup } from "../lib/ai";
 import { getSampleSize, getSamplingRationale, selectRandomSample } from "../lib/sampling";
 import { sendWorkpaperReviewRequest } from "../lib/email";
-import { getSystemPrompt, validateEvidence, agentSamplingAdvisor, agentExceptionDrafter } from "../lib/auditSkills";
+import { getSystemPrompt, validateEvidence, agentSamplingAdvisor, agentExceptionDrafter, agentPeerReview } from "../lib/auditSkills";
 
 export const workpapersRouter = router({
   listByEngagement: protectedProcedure
@@ -72,7 +72,13 @@ export const workpapersRouter = router({
 
       // Fetch accepted PBC items for this control so the AI can reference them specifically
       const acceptedPbc = await ctx.db
-        .select({ description: pbcItems.description, fileName: pbcItems.fileName, receivedDate: pbcItems.receivedDate })
+        .select({
+          description: pbcItems.description,
+          fileName: pbcItems.fileName,
+          fileUrl: pbcItems.fileUrl,
+          fileContent: pbcItems.fileContent,
+          receivedDate: pbcItems.receivedDate,
+        })
         .from(pbcItems)
         .where(and(eq(pbcItems.controlId, input.controlId), eq(pbcItems.status, "Accepted")));
 
@@ -362,6 +368,63 @@ Write in professional past-tense audit language.`;
       });
 
       return result;
+    }),
+
+  // ── Agent: Peer Review (second-pass QC) ─────────────────────────────────
+  agentPeerReview: auditedProcedure
+    .input(z.object({ workpaperId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [wp] = await ctx.db.select().from(workpapers).where(eq(workpapers.id, input.workpaperId));
+      if (!wp) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const procedure = wp.procedureFinal ?? wp.procedureDraft ?? "";
+      const results   = wp.resultsFinal  ?? wp.resultsDraft  ?? "";
+      const conclusion = wp.conclusionFinal ?? wp.conclusionDraft ?? "";
+
+      if (!procedure && !results && !conclusion) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No workpaper content to review. Generate the AI writeup first." });
+      }
+
+      const [ctrl] = await ctx.db.select().from(controls).where(eq(controls.id, wp.controlId));
+      if (!ctrl) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Build PBC summary for context
+      const acceptedPbc = await ctx.db
+        .select({ description: pbcItems.description, fileName: pbcItems.fileName })
+        .from(pbcItems)
+        .where(and(eq(pbcItems.controlId, wp.controlId), eq(pbcItems.status, "Accepted")));
+
+      const pbcSummary = acceptedPbc.length > 0
+        ? acceptedPbc.map((p, i) => `${i + 1}. ${p.description}${p.fileName ? ` (${p.fileName})` : ""}`).join("\n")
+        : "No accepted PBC items on file.";
+
+      const reviewResult = await agentPeerReview({
+        controlRef: ctrl.controlRef,
+        controlObjective: ctrl.objective,
+        controlType: ctrl.itgcType ?? ctrl.itacType ?? null,
+        frequency: ctrl.frequency,
+        riskLevel: ctrl.riskLevel,
+        sampleSize: wp.sampleSize ?? 0,
+        populationCount: wp.populationCount ?? 0,
+        procedure,
+        results,
+        conclusion,
+        pbcSummary,
+      });
+
+      // Log to audit trail
+      await ctx.db.insert(auditTrail).values({
+        id: randomUUID(),
+        engagementId: ctrl.engagementId,
+        entityType: "workpaper",
+        entityId: input.workpaperId,
+        action: "peer_review",
+        description: `AI peer review: ${reviewResult.overallRating} (score: ${reviewResult.overallScore}/100)`,
+        userId: ctx.user.id,
+        timestamp: new Date(),
+      });
+
+      return reviewResult;
     }),
 
   // ── Agent: Exception Drafter ─────────────────────────────────────────────

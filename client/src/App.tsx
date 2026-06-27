@@ -29,14 +29,64 @@ type AuthCtx = { user: User | null; token: string | null; login: (token: string,
 const AuthContext = createContext<AuthCtx>({ user: null, token: null, login: () => {}, logout: () => {} });
 export const useAuth = () => useContext(AuthContext);
 
+// SOC 2: sessions expire after 8 hours of inactivity
+const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+const ACTIVITY_KEY = "auditly_last_activity";
+
+function isJwtExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return typeof payload.exp === "number" && payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
 function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("auditly_token"));
+  const [token, setToken] = useState<string | null>(() => {
+    const t = localStorage.getItem("auditly_token");
+    if (!t || isJwtExpired(t)) { localStorage.removeItem("auditly_token"); localStorage.removeItem("auditly_user"); return null; }
+    return t;
+  });
   const [user, setUser] = useState<User | null>(() => {
     const u = localStorage.getItem("auditly_user");
     return u ? JSON.parse(u) : null;
   });
-  const login = (t: string, u: User) => { setToken(t); setUser(u); localStorage.setItem("auditly_token", t); localStorage.setItem("auditly_user", JSON.stringify(u)); };
-  const logout = () => { setToken(null); setUser(null); localStorage.removeItem("auditly_token"); localStorage.removeItem("auditly_user"); };
+
+  const login = (t: string, u: User) => {
+    setToken(t); setUser(u);
+    localStorage.setItem("auditly_token", t);
+    localStorage.setItem("auditly_user", JSON.stringify(u));
+    localStorage.setItem(ACTIVITY_KEY, String(Date.now()));
+  };
+  const logout = () => {
+    setToken(null); setUser(null);
+    localStorage.removeItem("auditly_token");
+    localStorage.removeItem("auditly_user");
+    localStorage.removeItem(ACTIVITY_KEY);
+  };
+
+  // SOC 2 session timeout: check inactivity every 60s, log out if inactive too long or JWT expired
+  useEffect(() => {
+    const recordActivity = () => localStorage.setItem(ACTIVITY_KEY, String(Date.now()));
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach(e => window.addEventListener(e, recordActivity, { passive: true }));
+
+    const interval = setInterval(() => {
+      const storedToken = localStorage.getItem("auditly_token");
+      if (!storedToken) return;
+      if (isJwtExpired(storedToken)) { logout(); return; }
+      const lastActivity = parseInt(localStorage.getItem(ACTIVITY_KEY) ?? "0");
+      if (lastActivity && Date.now() - lastActivity > SESSION_TIMEOUT_MS) { logout(); }
+    }, 60_000);
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, recordActivity));
+      clearInterval(interval);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return <AuthContext.Provider value={{ token, user, login, logout }}>{children}</AuthContext.Provider>;
 }
 

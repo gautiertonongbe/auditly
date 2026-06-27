@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Building2, Bell, Shield, Key, Save, Users, Plus, Trash2, Crown, ChevronDown } from "lucide-react";
+import { User, Building2, Bell, Shield, Key, Save, Users, Plus, Trash2, Crown, ChevronDown, Smartphone, Copy, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 type Tab = "profile" | "firm" | "team" | "notifications" | "security";
@@ -205,14 +205,50 @@ function NotificationsTab() {
 }
 
 function SecurityTab() {
+  // ── Change Password ───────────────────────────────────────────────────────
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState("");
 
   const strong = newPw.length >= 12 && /[A-Z]/.test(newPw) && /[0-9]/.test(newPw) && /[^A-Za-z0-9]/.test(newPw);
+  const changePassword = trpc.auth.changePassword.useMutation({
+    onSuccess: () => { setCurrentPw(""); setNewPw(""); setConfirmPw(""); setPwError(""); },
+    onError: (err) => setPwError(err.message),
+  });
+
+  // ── MFA Setup ─────────────────────────────────────────────────────────────
+  const { data: me, refetch: refetchMe } = trpc.auth.me.useQuery();
+  const [mfaStep, setMfaStep] = useState<"idle" | "setup" | "backup">("idle");
+  const [mfaQr, setMfaQr] = useState<{ secret: string; qrDataUrl: string } | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [mfaCodeError, setMfaCodeError] = useState("");
+  const [disablePw, setDisablePw] = useState("");
+  const [disableError, setDisableError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const mfaSetup = trpc.auth.mfaSetup.useMutation({
+    onSuccess: (data) => { setMfaQr(data); setMfaStep("setup"); setMfaCode(""); setMfaCodeError(""); },
+  });
+  const mfaEnable = trpc.auth.mfaEnable.useMutation({
+    onSuccess: (data) => { setBackupCodes(data.backupCodes); setMfaStep("backup"); refetchMe(); },
+    onError: (err) => setMfaCodeError(err.message),
+  });
+  const mfaDisable = trpc.auth.mfaDisable.useMutation({
+    onSuccess: () => { setDisablePw(""); setDisableError(""); refetchMe(); },
+    onError: (err) => setDisableError(err.message),
+  });
+
+  const copyBackupCodes = () => {
+    navigator.clipboard.writeText(backupCodes.join("\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Change Password */}
       <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 20px", display: "flex", alignItems: "center", gap: 8 }}>
           <Key size={15} /> Change Password
@@ -220,13 +256,13 @@ function SecurityTab() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
           <div>
             <label style={lbl}>Current Password</label>
-            <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} style={inp} />
+            <input type="password" value={currentPw} onChange={e => { setCurrentPw(e.target.value); setPwError(""); }} style={inp} />
           </div>
           <div>
             <label style={lbl}>New Password</label>
-            <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min. 12 characters" style={inp} />
+            <input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setPwError(""); }} placeholder="Min. 12 characters" style={inp} />
             {newPw.length > 0 && (
-              <div style={{ marginTop: 6, fontSize: 11, display: "flex", gap: 6 }}>
+              <div style={{ marginTop: 6, fontSize: 11, display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {["12+ chars", "Uppercase", "Number", "Symbol"].map((req, i) => {
                   const met = [newPw.length >= 12, /[A-Z]/.test(newPw), /[0-9]/.test(newPw), /[^A-Za-z0-9]/.test(newPw)][i];
                   return <span key={req} style={{ padding: "2px 7px", borderRadius: 4, background: met ? "#EAFAF1" : "#F2F3F4", color: met ? "#27AE60" : "#95A5A6", fontWeight: 600 }}>{req}</span>;
@@ -236,26 +272,172 @@ function SecurityTab() {
           </div>
           <div>
             <label style={lbl}>Confirm New Password</label>
-            <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} style={{ ...inp, borderColor: confirmPw && confirmPw !== newPw ? "#E74C3C" : "" }} />
+            <input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setPwError(""); }} style={{ ...inp, borderColor: confirmPw && confirmPw !== newPw ? "#E74C3C" : "" }} />
             {confirmPw && confirmPw !== newPw && <p style={{ fontSize: 11, color: "#E74C3C", marginTop: 4 }}>Passwords do not match</p>}
           </div>
         </div>
-        <button disabled={!strong || newPw !== confirmPw || !currentPw} style={{ ...btnPri, opacity: (!strong || newPw !== confirmPw || !currentPw) ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6 }}>
-          <Shield size={13} /> Update Password
+        {pwError && (
+          <div style={{ fontSize: 12, color: "var(--red)", background: "#FEE2E2", borderRadius: 6, padding: "8px 12px", marginBottom: 14 }}>{pwError}</div>
+        )}
+        {changePassword.isSuccess && (
+          <div style={{ fontSize: 12, color: "#16A34A", background: "#F0FDF4", borderRadius: 6, padding: "8px 12px", marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+            <CheckCircle size={12} /> Password updated successfully.
+          </div>
+        )}
+        <button
+          onClick={() => changePassword.mutate({ currentPassword: currentPw, newPassword: newPw })}
+          disabled={!strong || newPw !== confirmPw || !currentPw || changePassword.isPending}
+          style={{ ...btnPri, opacity: (!strong || newPw !== confirmPw || !currentPw) ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+          {changePassword.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Shield size={13} />}
+          {changePassword.isPending ? "Updating..." : "Update Password"}
         </button>
       </div>
 
+      {/* Two-Factor Authentication */}
       <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 4px" }}>Session & Access</h2>
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Manage active sessions and API access</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "var(--surface-alt)", borderRadius: 8, border: "1px solid var(--border)" }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-strong)" }}>Current Session</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Active now · JWT authenticated</div>
-            </div>
-            <span style={{ fontSize: 11, background: "#EAFAF1", color: "#27AE60", padding: "3px 10px", borderRadius: 10, fontWeight: 600 }}>Active</span>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 4px", display: "flex", alignItems: "center", gap: 8 }}>
+              <Smartphone size={15} /> Two-Factor Authentication
+            </h2>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+              Add an extra layer of security using an authenticator app (Google Authenticator, Authy, etc.)
+            </p>
           </div>
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10,
+            background: me?.mfaEnabled ? "#DCFCE7" : "#F3F4F6",
+            color: me?.mfaEnabled ? "#16A34A" : "var(--text-muted)",
+          }}>
+            {me?.mfaEnabled ? "Enabled" : "Disabled"}
+          </span>
+        </div>
+
+        {/* Not yet enabled — setup flow */}
+        {!me?.mfaEnabled && mfaStep === "idle" && (
+          <button
+            onClick={() => mfaSetup.mutate()}
+            disabled={mfaSetup.isPending}
+            style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6 }}>
+            {mfaSetup.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Smartphone size={13} />}
+            Set Up Two-Factor Authentication
+          </button>
+        )}
+
+        {/* Step 1: QR code + verify */}
+        {mfaStep === "setup" && mfaQr && (
+          <div>
+            <div style={{ display: "flex", gap: 24, alignItems: "flex-start", marginBottom: 20 }}>
+              <img src={mfaQr.qrDataUrl} alt="MFA QR code" style={{ width: 160, height: 160, borderRadius: 8, border: "1px solid var(--border)" }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", marginBottom: 8 }}>1. Scan this QR code</div>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 12 }}>
+                  Open your authenticator app and scan the QR code. Or enter the secret key manually:
+                </p>
+                <code style={{ fontSize: 11, background: "var(--surface-alt)", padding: "6px 10px", borderRadius: 6, display: "block", letterSpacing: "0.1em", wordBreak: "break-all", color: "var(--text-strong)", border: "1px solid var(--border)" }}>
+                  {mfaQr.secret}
+                </code>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", marginBottom: 8 }}>2. Enter the 6-digit code to verify</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={mfaCode}
+                  onChange={e => { setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setMfaCodeError(""); }}
+                  placeholder="000000"
+                  style={{ ...inp, letterSpacing: "0.2em", fontWeight: 700, fontSize: 18, textAlign: "center" }}
+                />
+                {mfaCodeError && <p style={{ fontSize: 11, color: "var(--red)", marginTop: 4 }}>{mfaCodeError}</p>}
+              </div>
+              <button
+                onClick={() => mfaEnable.mutate({ code: mfaCode })}
+                disabled={mfaCode.length !== 6 || mfaEnable.isPending}
+                style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6, marginTop: 0, opacity: mfaCode.length !== 6 ? 0.5 : 1 }}>
+                {mfaEnable.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle size={13} />}
+                Verify
+              </button>
+            </div>
+            <button onClick={() => { setMfaStep("idle"); setMfaQr(null); }} style={{ marginTop: 12, background: "none", border: "none", fontSize: 12, color: "var(--text-muted)", cursor: "pointer" }}>
+              Cancel setup
+            </button>
+          </div>
+        )}
+
+        {/* Step 2: Backup codes */}
+        {mfaStep === "backup" && backupCodes.length > 0 && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <CheckCircle size={16} color="#16A34A" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#16A34A" }}>Two-factor authentication enabled!</span>
+            </div>
+            <div style={{ background: "#FFF7ED", border: "1px solid #FDBA74", borderRadius: 8, padding: 14, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <AlertTriangle size={13} color="#EA580C" />
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#EA580C" }}>Save these backup codes now. They won't be shown again.</span>
+              </div>
+              <p style={{ fontSize: 11, color: "#92400E", margin: "0 0 10px", lineHeight: 1.5 }}>
+                Each code can be used once to access your account if you lose your authenticator device.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                {backupCodes.map(c => (
+                  <code key={c} style={{ fontSize: 12, fontWeight: 700, background: "#fff", padding: "4px 8px", borderRadius: 4, border: "1px solid #FDBA74", letterSpacing: "0.05em" }}>{c}</code>
+                ))}
+              </div>
+              <button onClick={copyBackupCodes} style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #FDBA74", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "#EA580C", cursor: "pointer" }}>
+                {copied ? <CheckCircle size={12} /> : <Copy size={12} />}
+                {copied ? "Copied!" : "Copy all codes"}
+              </button>
+            </div>
+            <button onClick={() => setMfaStep("idle")} style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6 }}>
+              <CheckCircle size={13} /> Done
+            </button>
+          </div>
+        )}
+
+        {/* Enabled: show disable option */}
+        {me?.mfaEnabled && mfaStep === "idle" && (
+          <div>
+            <div style={{ background: "#DCFCE7", border: "1px solid #A7F3D0", borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <CheckCircle size={13} color="#16A34A" />
+              <span style={{ fontSize: 12, color: "#15803D" }}>Your account is protected with two-factor authentication.</span>
+            </div>
+            <div>
+              <label style={lbl}>Disable Two-Factor Authentication (requires current password)</label>
+              <div style={{ display: "flex", gap: 10 }}>
+                <input
+                  type="password"
+                  value={disablePw}
+                  onChange={e => { setDisablePw(e.target.value); setDisableError(""); }}
+                  placeholder="Enter your password to disable MFA"
+                  style={{ ...inp, flex: 1 }}
+                />
+                <button
+                  onClick={() => mfaDisable.mutate({ password: disablePw })}
+                  disabled={!disablePw || mfaDisable.isPending}
+                  style={{ background: "#FEE2E2", color: "var(--red)", border: "1px solid #FECACA", borderRadius: 8, padding: "0 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0, opacity: !disablePw ? 0.5 : 1 }}>
+                  {mfaDisable.isPending ? "Disabling..." : "Disable 2FA"}
+                </button>
+              </div>
+              {disableError && <p style={{ fontSize: 11, color: "var(--red)", marginTop: 4 }}>{disableError}</p>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Session info */}
+      <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 4px" }}>Session</h2>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Sessions expire after 8 hours of activity (SOC 2 compliant).</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "var(--surface-alt)", borderRadius: 8, border: "1px solid var(--border)" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-strong)" }}>Current Session</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Active now · JWT authenticated · 8h expiry</div>
+          </div>
+          <span style={{ fontSize: 11, background: "#EAFAF1", color: "#27AE60", padding: "3px 10px", borderRadius: 10, fontWeight: 600 }}>Active</span>
         </div>
       </div>
     </div>
@@ -381,3 +563,10 @@ function TeamTab() {
 const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 5 };
 const inp: React.CSSProperties = { width: "100%", height: 38, border: "1px solid var(--border)", borderRadius: 7, padding: "0 10px", fontSize: 13, background: "#fff", boxSizing: "border-box" };
 const btnPri: React.CSSProperties = { background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+
+if (typeof document !== "undefined" && !document.getElementById("settings-spin")) {
+  const s = document.createElement("style");
+  s.id = "settings-spin";
+  s.textContent = "@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }";
+  document.head.appendChild(s);
+}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Sparkles, CheckCircle, AlertTriangle, Save, UserCheck, Edit3, Eye, MessageSquare, Send, Bot, User, ChevronDown } from "lucide-react";
+import { ArrowLeft, Sparkles, CheckCircle, AlertTriangle, Save, UserCheck, Edit3, Eye, MessageSquare, Send, Bot, User, ChevronDown, ChevronRight, Shield, BarChart2, FileWarning, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format } from "date-fns";
 
@@ -32,6 +32,22 @@ export default function WorkpaperDetailPage() {
   const signOff = trpc.workpapers.signOff.useMutation({ onSuccess: () => refetch() });
   const createException = trpc.exceptions.create.useMutation({ onSuccess: () => refetch() });
   const addComment = trpc.workpapers.addReviewComment.useMutation({ onSuccess: () => { refetch(); setCommentText(""); } });
+  const { data: pbcItemsList } = trpc.pbc.listByControl.useQuery({ controlId });
+
+  const agentPeerReview = trpc.workpapers.agentPeerReview.useMutation({
+    onSuccess: (data) => { setPeerReviewResult(data); setPeerReviewOpen(true); },
+  });
+
+  const agentEvidence = trpc.workpapers.agentValidateEvidence.useMutation({
+    onSuccess: (data) => setAgentEvidenceResult(data),
+  });
+  const agentSampling = trpc.workpapers.agentSamplingAdvisor.useMutation({
+    onSuccess: (data) => setAgentSamplingResult(data),
+  });
+  const agentExcDrafter = trpc.workpapers.agentExceptionDrafter.useMutation({
+    onSuccess: (data) => setAgentExcResult(data),
+  });
+
   const chatImprove = trpc.workpapers.chatImprove.useMutation({
     onSuccess: (data) => {
       refetch();
@@ -45,6 +61,26 @@ export default function WorkpaperDetailPage() {
 
   const [exceptionDesc, setExceptionDesc] = useState("");
   const [showExcModal, setShowExcModal] = useState(false);
+
+  // AI Agents panel state
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const [peerReviewResult, setPeerReviewResult] = useState<{
+    overallScore: number;
+    overallRating: string;
+    issues: { section: string; severity: string; finding: string; suggestion: string }[];
+    revisedProcedure?: string;
+    revisedResults?: string;
+    revisedConclusion?: string;
+    reviewerNotes: string;
+  } | null>(null);
+  const [peerReviewOpen, setPeerReviewOpen] = useState(false);
+  const [selectedPbcId, setSelectedPbcId] = useState("");
+  const [samplingPopulation, setSamplingPopulation] = useState("");
+  const [agentEvidenceResult, setAgentEvidenceResult] = useState<{ score: string; rating: number; summary: string; gaps: string[]; suggestions: string[] } | null>(null);
+  const [agentSamplingResult, setAgentSamplingResult] = useState<{ recommendedSampleSize: number; method: string; rationale: string; pcaobReference: string } | null>(null);
+  const [agentExcResult, setAgentExcResult] = useState<{ deficiencyMemo: string; suggestedSeverity: string; managementLetterComment: string } | null>(null);
+  const [agentExcDesc, setAgentExcDesc] = useState("");
+  const [agentExcCount, setAgentExcCount] = useState(1);
 
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
 
@@ -105,11 +141,20 @@ export default function WorkpaperDetailPage() {
                 {generateAi.isPending ? "Generating..." : hasAiContent ? "Regenerate AI" : "Generate AI Writeup"}
               </button>
               {hasAiContent && (
-                <button
-                  onClick={() => setChatOpen(o => !o)}
-                  style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,0.12)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                  <MessageSquare size={13} /> {chatOpen ? "Hide AI Chat" : "Improve with AI Chat"}
-                </button>
+                <>
+                  <button
+                    onClick={() => setChatOpen(o => !o)}
+                    style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,0.12)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    <MessageSquare size={13} /> {chatOpen ? "Hide AI Chat" : "Improve with AI Chat"}
+                  </button>
+                  <button
+                    onClick={() => wp?.id && agentPeerReview.mutate({ workpaperId: wp.id })}
+                    disabled={!wp?.id || agentPeerReview.isPending}
+                    style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(212,175,55,0.15)", color: "#D4AF37", border: "1px solid rgba(212,175,55,0.4)", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: agentPeerReview.isPending ? 0.7 : 1 }}>
+                    {agentPeerReview.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle size={13} />}
+                    {agentPeerReview.isPending ? "Reviewing..." : "AI Peer Review"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -237,6 +282,80 @@ export default function WorkpaperDetailPage() {
             </div>
           )}
 
+          {/* AI Peer Review results panel */}
+          {peerReviewResult && peerReviewOpen && (
+            <div style={{ background: "var(--surface)", borderRadius: 12, border: `2px solid ${peerReviewResult.overallRating === "Pass" ? "#A7F3D0" : peerReviewResult.overallRating === "Pass with Comments" ? "#FEF3C7" : "#FECACA"}`, overflow: "hidden", marginBottom: 20 }}>
+              <div style={{
+                padding: "12px 18px",
+                background: peerReviewResult.overallRating === "Pass" ? "#F0FDF4" : peerReviewResult.overallRating === "Pass with Comments" ? "#FFFBEB" : "#FEF2F2",
+                display: "flex", alignItems: "center", justifyContent: "space-between"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <CheckCircle size={16} color={peerReviewResult.overallRating === "Pass" ? "#16A34A" : peerReviewResult.overallRating === "Pass with Comments" ? "#D97706" : "#DC2626"} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>
+                      AI Peer Review: {peerReviewResult.overallRating}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Quality score: {peerReviewResult.overallScore}/100 · {peerReviewResult.issues.length} finding{peerReviewResult.issues.length !== 1 ? "s" : ""}</div>
+                  </div>
+                </div>
+                <button onClick={() => setPeerReviewOpen(false)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "var(--text-muted)", lineHeight: 1 }}>×</button>
+              </div>
+
+              {/* Reviewer notes */}
+              <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontSize: 13, color: "var(--text)", lineHeight: 1.6, fontStyle: "italic" }}>
+                {peerReviewResult.reviewerNotes}
+              </div>
+
+              {/* Issues list */}
+              {peerReviewResult.issues.length > 0 && (
+                <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+                  {peerReviewResult.issues.map((issue, i) => (
+                    <div key={i} style={{
+                      padding: 12, borderRadius: 8, border: "1px solid var(--border)",
+                      background: issue.severity === "Critical" ? "#FEF2F2" : issue.severity === "Significant" ? "#FFFBEB" : "#F9FAFB"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, textTransform: "uppercase",
+                          background: issue.severity === "Critical" ? "#DC2626" : issue.severity === "Significant" ? "#D97706" : "#6B7280",
+                          color: "#fff"
+                        }}>{issue.severity}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "capitalize" }}>{issue.section}</span>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-strong)", marginBottom: 4 }}>{issue.finding}</div>
+                      <div style={{ fontSize: 12, color: "var(--accent)" }}>Suggestion: {issue.suggestion}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Revised content offered */}
+              {(peerReviewResult.revisedProcedure || peerReviewResult.revisedResults || peerReviewResult.revisedConclusion) && (
+                <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", background: "#F8FAFC" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-strong)", marginBottom: 8 }}>AI reviewer has proposed revised sections. Apply them?</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {peerReviewResult.revisedProcedure && (
+                      <button onClick={() => { upsert.mutate({ controlId, engagementId: engId, procedureFinal: peerReviewResult.revisedProcedure }); }} style={{ ...btnPri, fontSize: 12, padding: "6px 12px", gap: 5 }}>
+                        <CheckCircle size={12} /> Apply revised procedure
+                      </button>
+                    )}
+                    {peerReviewResult.revisedResults && (
+                      <button onClick={() => { upsert.mutate({ controlId, engagementId: engId, resultsFinal: peerReviewResult.revisedResults }); }} style={{ ...btnPri, fontSize: 12, padding: "6px 12px", gap: 5 }}>
+                        <CheckCircle size={12} /> Apply revised results
+                      </button>
+                    )}
+                    {peerReviewResult.revisedConclusion && (
+                      <button onClick={() => { upsert.mutate({ controlId, engagementId: engId, conclusionFinal: peerReviewResult.revisedConclusion }); }} style={{ ...btnPri, fontSize: 12, padding: "6px 12px", gap: 5 }}>
+                        <CheckCircle size={12} /> Apply revised conclusion
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Section tabs */}
           <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)", marginBottom: 20 }}>
             {(["procedure", "results", "conclusion"] as Tab[]).map(t => (
@@ -312,6 +431,191 @@ export default function WorkpaperDetailPage() {
               style={{ ...btnSec, gap: 6, color: "var(--green)", borderColor: "#A9DFBF" }}>
               <CheckCircle size={13} /> Mark as Pass
             </button>
+          </div>
+
+          {/* AI Agents Panel */}
+          <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
+            <button
+              onClick={() => setAgentsOpen(o => !o)}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg, #1E3A5F, #2A4F7C)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Bot size={15} color="#D4AF37" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>AI Audit Agents</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Evidence validator, sampling advisor, exception drafter</div>
+              </div>
+              {agentsOpen ? <ChevronDown size={16} color="var(--text-muted)" /> : <ChevronRight size={16} color="var(--text-muted)" />}
+            </button>
+
+            {agentsOpen && (
+              <div style={{ borderTop: "1px solid var(--border)", padding: 20, display: "flex", flexDirection: "column", gap: 20 }}>
+
+                {/* Agent 1: Evidence Adequacy Validator */}
+                <div style={{ background: "var(--surface-alt)", borderRadius: 10, padding: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 6, background: "#EEF2FF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Shield size={13} color="#6366F1" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Evidence Adequacy Validator</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Rates whether a PBC file is sufficient evidence for PCAOB testing</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                    <select
+                      value={selectedPbcId}
+                      onChange={e => { setSelectedPbcId(e.target.value); setAgentEvidenceResult(null); }}
+                      style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 13, fontFamily: "inherit", background: "#fff" }}>
+                      <option value="">Select an accepted PBC item...</option>
+                      {(pbcItemsList ?? []).filter(p => p.status === "Accepted" && p.fileContent).map(p => (
+                        <option key={p.id} value={p.id}>{p.description}{p.fileName ? ` (${p.fileName})` : ""}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => { if (selectedPbcId) agentEvidence.mutate({ pbcItemId: selectedPbcId }); }}
+                      disabled={!selectedPbcId || agentEvidence.isPending}
+                      style={{ ...btnPri, gap: 6, flexShrink: 0, opacity: !selectedPbcId ? 0.5 : 1 }}>
+                      {agentEvidence.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Shield size={13} />}
+                      Validate
+                    </button>
+                  </div>
+                  {!pbcItemsList?.some(p => p.status === "Accepted" && p.fileContent) && (
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>No accepted PBC items with extracted text. Upload and accept PBC files first.</p>
+                  )}
+                  {agentEvidenceResult && (
+                    <div style={{ marginTop: 12, padding: 14, background: "#fff", borderRadius: 8, border: "1px solid var(--border)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                        <div style={{
+                          fontSize: 22, fontWeight: 800, color: agentEvidenceResult.rating >= 8 ? "var(--green)" : agentEvidenceResult.rating >= 5 ? "#D97706" : "var(--red)"
+                        }}>{agentEvidenceResult.rating}/10</div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>{agentEvidenceResult.score}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Adequacy rating</div>
+                        </div>
+                      </div>
+                      {agentEvidenceResult.gaps.length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Gaps identified</div>
+                          <ul style={{ margin: 0, paddingLeft: 16 }}>
+                            {agentEvidenceResult.gaps.map((g, i) => <li key={i} style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.6 }}>{g}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {agentEvidenceResult.suggestions.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Suggestions</div>
+                          <ul style={{ margin: 0, paddingLeft: 16 }}>
+                            {agentEvidenceResult.suggestions.map((s, i) => <li key={i} style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.6 }}>{s}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Agent 2: Sampling Advisor */}
+                <div style={{ background: "var(--surface-alt)", borderRadius: 10, padding: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 6, background: "#F0FDF4", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <BarChart2 size={13} color="#16A34A" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Sampling Advisor</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>AS 2315 sampling guidance for this control's frequency and risk level</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="number"
+                      value={samplingPopulation}
+                      onChange={e => { setSamplingPopulation(e.target.value); setAgentSamplingResult(null); }}
+                      placeholder="Population count (e.g. 240)"
+                      style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 13, fontFamily: "inherit" }}
+                    />
+                    <button
+                      onClick={() => { if (samplingPopulation && control) agentSampling.mutate({ controlId, populationCount: parseInt(samplingPopulation) }); }}
+                      disabled={!samplingPopulation || agentSampling.isPending}
+                      style={{ ...btnPri, gap: 6, flexShrink: 0, opacity: !samplingPopulation ? 0.5 : 1 }}>
+                      {agentSampling.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <BarChart2 size={13} />}
+                      Advise
+                    </button>
+                  </div>
+                  {agentSamplingResult && (
+                    <div style={{ marginTop: 12, padding: 14, background: "#fff", borderRadius: 8, border: "1px solid var(--border)" }}>
+                      <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--navy)" }}>{agentSamplingResult.recommendedSampleSize}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Recommended sample</div>
+                        </div>
+                        <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 16 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>{agentSamplingResult.method}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Method</div>
+                        </div>
+                        <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 16 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>{agentSamplingResult.pcaobReference}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>PCAOB Reference</div>
+                        </div>
+                      </div>
+                      <p style={{ fontSize: 12, color: "var(--text)", margin: 0, lineHeight: 1.6 }}>{agentSamplingResult.rationale}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Agent 3: Exception Drafter */}
+                <div style={{ background: "var(--surface-alt)", borderRadius: 10, padding: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 6, background: "#FFF7ED", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <FileWarning size={13} color="#EA580C" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Exception Drafter</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>AI-drafts deficiency memo and management letter comment from your exception description</div>
+                    </div>
+                  </div>
+                  <textarea
+                    value={agentExcDesc}
+                    onChange={e => { setAgentExcDesc(e.target.value); setAgentExcResult(null); }}
+                    placeholder="Describe the exception (e.g. 2 of 25 change tickets lacked UAT sign-off prior to production promotion)..."
+                    rows={2}
+                    style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 13, resize: "vertical", fontFamily: "inherit", marginBottom: 8 }}
+                  />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Exceptions found:</label>
+                    <input type="number" min={1} value={agentExcCount} onChange={e => setAgentExcCount(parseInt(e.target.value) || 1)}
+                      style={{ width: 70, border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", fontSize: 13, fontFamily: "inherit" }} />
+                    <button
+                      onClick={() => { if (agentExcDesc && wp?.id) agentExcDrafter.mutate({ workpaperId: wp.id, exceptionDescription: agentExcDesc, exceptionsFound: agentExcCount }); }}
+                      disabled={agentExcDesc.length < 10 || !wp?.id || agentExcDrafter.isPending}
+                      style={{ ...btnPri, gap: 6, background: "#EA580C", opacity: agentExcDesc.length < 10 ? 0.5 : 1 }}>
+                      {agentExcDrafter.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <FileWarning size={13} />}
+                      Draft Memo
+                    </button>
+                  </div>
+                  {agentExcResult && (
+                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ padding: 14, background: "#fff", borderRadius: 8, border: "1px solid var(--border)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--red)" }}>Suggested Severity</span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                            background: agentExcResult.suggestedSeverity === "MaterialWeakness" ? "#FEE2E2" : agentExcResult.suggestedSeverity === "SignificantDeficiency" ? "#FEF3C7" : "#F3F4F6",
+                            color: agentExcResult.suggestedSeverity === "MaterialWeakness" ? "var(--red)" : agentExcResult.suggestedSeverity === "SignificantDeficiency" ? "#D97706" : "var(--text-muted)"
+                          }}>{agentExcResult.suggestedSeverity.replace(/([A-Z])/g, " $1").trim()}</span>
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Deficiency Memo</div>
+                        <p style={{ fontSize: 12, color: "var(--text)", margin: 0, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{agentExcResult.deficiencyMemo}</p>
+                      </div>
+                      <div style={{ padding: 14, background: "#fff", borderRadius: 8, border: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Management Letter Comment</div>
+                        <p style={{ fontSize: 12, color: "var(--text)", margin: 0, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{agentExcResult.managementLetterComment}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
           </div>
 
           {/* Review Comments */}
@@ -412,3 +716,11 @@ export default function WorkpaperDetailPage() {
 
 const btnPri: React.CSSProperties = { background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center" };
 const btnSec: React.CSSProperties = { background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center" };
+
+// Inject spin keyframe for loading spinners
+if (typeof document !== "undefined" && !document.getElementById("auditly-spin")) {
+  const style = document.createElement("style");
+  style.id = "auditly-spin";
+  style.textContent = "@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }";
+  document.head.appendChild(style);
+}

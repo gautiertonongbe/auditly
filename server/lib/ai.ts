@@ -15,6 +15,37 @@ const DOMAIN_GUIDANCE: Record<string, string> = {
   IPE: "IPE (Information Produced by Entity): Focus on completeness testing (trace totals to source), accuracy testing (verify key fields against source records), system configuration verification, and parameter confirmation.",
 };
 
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"]);
+
+function isImageFile(fileName: string | null | undefined): boolean {
+  if (!fileName) return false;
+  const ext = fileName.toLowerCase().slice(fileName.lastIndexOf("."));
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+function fileNameToMediaType(fileName: string): "image/png" | "image/jpeg" | "image/gif" | "image/webp" {
+  const ext = fileName.toLowerCase().slice(fileName.lastIndexOf("."));
+  if (ext === ".png") return "image/png";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".webp") return "image/webp";
+  return "image/jpeg";
+}
+
+async function fetchImageAsBase64(url: string): Promise<{ data: string; mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; fileName: string } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const buffer = await res.arrayBuffer();
+    if (buffer.byteLength > 5 * 1024 * 1024) return null; // skip >5MB
+    const data = Buffer.from(buffer).toString("base64");
+    const fileName = url.split("/").pop()?.split("?")[0] ?? "image";
+    const mediaType = fileNameToMediaType(fileName);
+    return { data, mediaType, fileName };
+  } catch {
+    return null;
+  }
+}
+
 export async function generateWorkpaperWriteup(params: {
   controlRef: string;
   controlObjective: string;
@@ -24,18 +55,36 @@ export async function generateWorkpaperWriteup(params: {
   riskLevel: string;
   population: string;
   sampleSize: number;
-  pbcItems: { description: string; fileName?: string | null; receivedDate?: Date | null }[];
+  pbcItems: {
+    description: string;
+    fileName?: string | null;
+    fileUrl?: string | null;
+    fileContent?: string | null;
+    receivedDate?: Date | null;
+  }[];
   framework: string;
 }): Promise<{ procedure: string; results: string; conclusion: string }> {
   const domainGuidance = DOMAIN_GUIDANCE[params.controlType] ?? "";
 
+  // Fetch images for PBC items that are screenshots/images
+  const imageItems: { index: number; img: { data: string; mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; fileName: string } }[] = [];
+  await Promise.all(params.pbcItems.map(async (p, i) => {
+    if (isImageFile(p.fileName) && p.fileUrl) {
+      const img = await fetchImageAsBase64(p.fileUrl);
+      if (img) imageItems.push({ index: i, img });
+    }
+  }));
+
   const pbcSection = params.pbcItems.length > 0
-    ? params.pbcItems.map((p, i) =>
-        `  PBC ${i + 1}: ${p.description}${p.fileName ? ` (File: ${p.fileName})` : ""}${p.receivedDate ? ` — received ${new Date(p.receivedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}`
-      ).join("\n")
+    ? params.pbcItems.map((p, i) => {
+        const hasImage = imageItems.some(im => im.index === i);
+        const hasText = p.fileContent && p.fileContent.trim().length > 0;
+        const contentNote = hasImage ? " [SCREENSHOT — see image below]" : hasText ? ` [Content extracted: ${p.fileContent!.slice(0, 300)}...]` : "";
+        return `  PBC ${i + 1}: ${p.description}${p.fileName ? ` (File: ${p.fileName})` : ""}${p.receivedDate ? ` — received ${new Date(p.receivedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}${contentNote}`;
+      }).join("\n")
     : "  No accepted PBC items on file yet.";
 
-  const prompt = `You are a Big 4 SOX audit manager writing workpaper documentation. Generate a professional, ${params.framework}-compliant writeup for the following control.
+  const textPrompt = `You are a Big 4 SOX audit manager writing workpaper documentation. Generate a professional, ${params.framework}-compliant writeup for the following control.
 
 Control Reference: ${params.controlRef}
 Domain: ${params.domain} - ${params.controlType}
@@ -47,22 +96,42 @@ Sample Size: ${params.sampleSize}
 
 PBC Evidence Received (${params.pbcItems.length} item${params.pbcItems.length !== 1 ? "s" : ""}):
 ${pbcSection}
+${imageItems.length > 0 ? `\nIMPORTANT: ${imageItems.length} screenshot(s) are attached below. Examine each image carefully. Describe what is visible in the screenshot (system name, date ranges, columns, data visible) and reference it specifically in your writeup using the filename shown above.` : ""}
 
 Generate three sections in JSON format:
-1. "procedure": Testing procedure performed (3-5 sentences, past tense, professional audit language). IMPORTANT: Explicitly reference each PBC item by name/description when describing how evidence was obtained and tested. For example: "We obtained [PBC description] ([filename]) and agreed [X] items to [Y]."
-2. "results": Results of testing (2-3 sentences). Reference the specific evidence files tested. Assume all ${params.sampleSize} items passed unless otherwise noted.
-3. "conclusion": One-sentence conclusion referencing the control objective.
+1. "procedure": Testing procedure performed (3-5 sentences, past tense, professional PCAOB audit language). Reference each PBC item explicitly by its description and filename. For screenshots, describe what the image shows and how you used it as evidence.
+2. "results": Results of testing (2-3 sentences). Reference specific files/screenshots tested. Assume all ${params.sampleSize} sample items passed unless otherwise noted.
+3. "conclusion": One-sentence conclusion referencing the control objective and testing period.
 
 Return ONLY valid JSON: { "procedure": "...", "results": "...", "conclusion": "..." }`;
 
+  // Build multimodal message content: text first, then image blocks for each screenshot
+  type ContentBlock =
+    | { type: "text"; text: string }
+    | { type: "image"; source: { type: "base64"; media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string } };
+
+  const content: ContentBlock[] = [{ type: "text", text: textPrompt }];
+  for (const { index, img } of imageItems) {
+    const pbc = params.pbcItems[index];
+    content.push({ type: "text", text: `\n--- Screenshot for PBC ${index + 1}: ${pbc.description} (${img.fileName}) ---` });
+    content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });
+  }
+
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
+    max_tokens: 1200,
+    messages: [{ role: "user", content }],
   });
 
   const text = (response.content[0] as { text: string }).text;
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Extract JSON if wrapped in markdown code block
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) return JSON.parse(match[1]);
+    throw new Error("AI returned invalid JSON");
+  }
 }
 
 export async function generateIpeMemo(params: {
