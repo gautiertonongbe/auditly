@@ -176,16 +176,8 @@ function Sidebar() {
       display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, zIndex: 100,
     }}>
       {/* Logo */}
-      <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.25)" }}>
-            <Shield size={18} color="#fff" />
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16, color: "#fff", letterSpacing: "-0.3px" }}>Auditly</div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", marginTop: 1 }}>SOX Audit Platform</div>
-          </div>
-        </div>
+      <div style={{ padding: "18px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <img src="https://res.cloudinary.com/dl6zdpgsk/image/upload/v1782585701/Logo_wjai7x.png" alt="Auditly" style={{ height: 32, width: "auto", objectFit: "contain", display: "block" }} />
       </div>
 
       {/* Active engagement context pill */}
@@ -615,14 +607,8 @@ function LoginPage() {
     <div style={{ background: "linear-gradient(155deg, #162E4D 0%, #0D1B2E 100%)", padding: "36px 36px 30px", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -40, right: -40, width: 180, height: 180, borderRadius: "50%", background: "rgba(37,99,235,0.1)" }} />
       <div style={{ position: "absolute", bottom: -30, left: 40, width: 120, height: 120, borderRadius: "50%", background: "rgba(212,175,55,0.07)" }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 26, position: "relative" }}>
-        <div style={{ width: 42, height: 42, borderRadius: 11, background: "linear-gradient(135deg, #C9991A, #EFC033)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 14px rgba(212,175,55,0.45), 0 0 0 1px rgba(255,255,255,0.1)" }}>
-          <Shield size={22} color="#0D1B2E" />
-        </div>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.4px", lineHeight: 1.1 }}>Auditly</div>
-          <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.38)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, fontWeight: 500 }}>AI-Native SOX Audit Platform</div>
-        </div>
+      <div style={{ marginBottom: 26, position: "relative" }}>
+        <img src="https://res.cloudinary.com/dl6zdpgsk/image/upload/v1782585701/Logo_wjai7x.png" alt="Auditly" style={{ height: 36, width: "auto", objectFit: "contain", display: "block" }} />
       </div>
       <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", margin: "0 0 6px", position: "relative", letterSpacing: "-0.3px" }}>{title}</h2>
       <p style={{ fontSize: 13, color: "rgba(255,255,255,0.48)", margin: 0, position: "relative" }}>{subtitle}</p>
