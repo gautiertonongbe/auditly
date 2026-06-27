@@ -15,8 +15,8 @@ export default function WorkpaperDetailPage() {
   const [editing, setEditing] = useState<Tab | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
-  const { data: wp, refetch } = trpc.workpapers.getByControl.useQuery({ controlId }, { enabled: !!controlId });
-  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId: engId }, { enabled: !!engId });
+  const { data: wp, refetch } = trpc.workpapers.getByControl.useQuery({ controlId });
+  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId: engId });
   const control = controls?.find(c => c.id === controlId);
 
   const generateAi = trpc.workpapers.generateAi.useMutation({ onSuccess: () => refetch() });

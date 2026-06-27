@@ -13,14 +13,14 @@ export const usersRouter = router({
       firmName: users.firmName,
     })
     .from(users)
-    .where(eq(users.id, ctx.userId))
+    .where(eq(users.id, ctx.user.id))
     .then(rows => rows[0] ?? null)
   ),
 
   updateProfile: protectedProcedure
     .input(z.object({ name: z.string().min(2).optional() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.update(users).set({ ...(input.name ? { name: input.name } : {}) }).where(eq(users.id, ctx.userId));
+      await ctx.db.update(users).set({ ...(input.name ? { name: input.name } : {}) }).where(eq(users.id, ctx.user.id));
       return { ok: true };
     }),
 });

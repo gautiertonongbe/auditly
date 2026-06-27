@@ -111,7 +111,7 @@ export default function ControlsPage() {
   const [filter, setFilter] = useState<"all" | "ITGC" | "ITAC">("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const { data: controls, refetch } = trpc.controls.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
+  const { data: controls, refetch } = trpc.controls.listByEngagement.useQuery({ engagementId });
   const seedControls = trpc.controls.seedStandardControls.useMutation({ onSuccess: () => refetch() });
 
   const filtered = (controls ?? []).filter(c => {

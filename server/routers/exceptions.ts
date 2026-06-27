@@ -67,6 +67,7 @@ export const exceptionsRouter = router({
       remediationPlan: z.string().optional(),
       remediationDueDate: z.date().optional(),
       status: z.enum(["Open", "Remediated", "AcceptedRisk", "PendingRetest"]).optional(),
+      severity: z.enum(["ControlDeficiency", "SignificantDeficiency", "MaterialWeakness"]).optional(),
       managementLetterComment: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {

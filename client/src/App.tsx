@@ -166,7 +166,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function Dashboard() {
   const { data: engagements } = trpc.engagements.list.useQuery();
-  const active = engagements?.filter(e => e.status === "Fieldwork" || e.status === "UnderReview") ?? [];
+  const active = engagements?.filter(e => e.status === "fieldwork" || e.status === "review") ?? [];
   const recent = engagements?.slice(0, 5) ?? [];
 
   return (
@@ -176,7 +176,7 @@ function Dashboard() {
         {[
           { label: "Total Engagements", value: String(engagements?.length ?? 0), color: "var(--accent)" },
           { label: "Active (Fieldwork / Review)", value: String(active.length), color: "var(--navy)" },
-          { label: "Complete", value: String(engagements?.filter(e => e.status === "Complete").length ?? 0), color: "#27AE60" },
+          { label: "Complete", value: String(engagements?.filter(e => e.status === "complete").length ?? 0), color: "#27AE60" },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: "var(--surface)", borderRadius: 12, padding: 20, border: "1px solid var(--border)" }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{label}</div>
@@ -198,7 +198,7 @@ function Dashboard() {
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-strong)" }}>{eng.clientName}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{eng.fiscalYear} · {eng.framework}</div>
                 </div>
-                <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 10, background: eng.status === "Fieldwork" ? "#EBF3FB" : eng.status === "Complete" ? "#EAFAF1" : "var(--surface-alt)", color: eng.status === "Fieldwork" ? "#2E86DE" : eng.status === "Complete" ? "#27AE60" : "var(--text-muted)", fontWeight: 600 }}>
+                <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 10, background: eng.status === "fieldwork" ? "#EBF3FB" : eng.status === "complete" ? "#EAFAF1" : "var(--surface-alt)", color: eng.status === "fieldwork" ? "#2E86DE" : eng.status === "complete" ? "#27AE60" : "var(--text-muted)", fontWeight: 600 }}>
                   {eng.status}
                 </span>
               </a>

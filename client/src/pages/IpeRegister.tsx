@@ -79,7 +79,7 @@ export default function IpeRegisterPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data: items, refetch } = trpc.ipe.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
+  const { data: items, refetch } = trpc.ipe.listByEngagement.useQuery({ engagementId });
   const updateResult = trpc.ipe.updateTestingResult.useMutation({ onSuccess: () => refetch() });
 
   const passCount = items?.filter(i => i.completenessStatus === "Pass" && i.accuracyStatus === "Pass").length ?? 0;

@@ -24,8 +24,8 @@ export default function ExceptionsPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
 
-  const { data: exceptions, refetch } = trpc.exceptions.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
+  const { data: exceptions, refetch } = trpc.exceptions.listByEngagement.useQuery({ engagementId });
+  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId });
   const update = trpc.exceptions.update.useMutation({ onSuccess: () => { refetch(); setEditing(null); } });
 
   const openCount = exceptions?.filter(e => e.status === "Open").length ?? 0;

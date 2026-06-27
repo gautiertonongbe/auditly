@@ -33,7 +33,7 @@ export default function AuditTrailPage() {
   const [filterAction, setFilterAction] = useState("all");
   const [filterEntity, setFilterEntity] = useState("all");
 
-  const { data: trail } = trpc.auditTrail.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
+  const { data: trail } = trpc.auditTrail.listByEngagement.useQuery({ engagementId });
 
   const filtered = (trail ?? []).filter(entry => {
     if (filterAction !== "all" && entry.action !== filterAction) return false;
@@ -116,11 +116,11 @@ export default function AuditTrailPage() {
                       <div style={{ fontSize: 13, color: "var(--text-strong)", fontWeight: 500 }}>
                         {entry.description}
                       </div>
-                      {(entry.before || entry.after) && (
+                      {(entry.before != null || entry.after != null) && (
                         <details style={{ marginTop: 8 }}>
                           <summary style={{ fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}>Show diff</summary>
                           <pre style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-alt)", padding: "8px 10px", borderRadius: 6, marginTop: 6, overflow: "auto", maxHeight: 120 }}>
-                            {JSON.stringify({ before: entry.before, after: entry.after }, null, 2)}
+                            {JSON.stringify({ before: entry.before as object, after: entry.after as object }, null, 2)}
                           </pre>
                         </details>
                       )}

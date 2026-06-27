@@ -15,9 +15,9 @@ export default function DeficiencyAssessmentPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [result, setResult] = useState<{ assessment: string; finalSeverity: string } | null>(null);
 
-  const { data: exceptions } = trpc.exceptions.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: engagement } = trpc.engagements.get.useQuery({ id: engagementId }, { enabled: !!engagementId });
+  const { data: exceptions } = trpc.exceptions.listByEngagement.useQuery({ engagementId });
+  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId });
+  const { data: engagement } = trpc.engagements.get.useQuery({ id: engagementId });
 
   const assess = trpc.ai.assessDeficiency.useMutation({ onSuccess: setResult });
 

@@ -67,8 +67,8 @@ export default function PbcTrackerPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
 
-  const { data: items, refetch } = trpc.pbc.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
+  const { data: items, refetch } = trpc.pbc.listByEngagement.useQuery({ engagementId });
+  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId });
   const updateStatus = trpc.pbc.updateStatus.useMutation({ onSuccess: () => refetch() });
 
   const filtered = (items ?? []).filter(i => filterStatus === "all" || i.status === filterStatus);

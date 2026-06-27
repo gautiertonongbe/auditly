@@ -6,18 +6,18 @@ export default function AnalyticsPage() {
   const [, params] = useRoute("/engagements/:id/analytics");
   const engagementId = params?.id ?? "";
 
-  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: exceptions } = trpc.exceptions.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: pbcItems } = trpc.pbc.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: ipeItems } = trpc.ipe.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
-  const { data: workpapers } = trpc.workpapers.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
+  const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId });
+  const { data: exceptions } = trpc.exceptions.listByEngagement.useQuery({ engagementId });
+  const { data: pbcItems } = trpc.pbc.listByEngagement.useQuery({ engagementId });
+  const { data: ipeItems } = trpc.ipe.listByEngagement.useQuery({ engagementId });
+  const { data: workpapers } = trpc.workpapers.listByEngagement.useQuery({ engagementId });
 
-  // Controls metrics
+  // Controls metrics (schema: NotStarted | InProgress | UnderReview | Complete | Exception)
   const totalControls = controls?.length ?? 0;
-  const completeControls = controls?.filter(c => c.status === "Pass" || c.status === "Exception").length ?? 0;
-  const passingControls = controls?.filter(c => c.status === "Pass").length ?? 0;
+  const completeControls = controls?.filter(c => c.status === "Complete" || c.status === "Exception").length ?? 0;
+  const passingControls = controls?.filter(c => c.status === "Complete").length ?? 0;
   const exceptionControls = controls?.filter(c => c.status === "Exception").length ?? 0;
-  const inProgressControls = controls?.filter(c => c.status === "InProgress").length ?? 0;
+  const inProgressControls = controls?.filter(c => c.status === "InProgress" || c.status === "UnderReview").length ?? 0;
   const notStartedControls = controls?.filter(c => c.status === "NotStarted").length ?? 0;
   const completionPct = totalControls > 0 ? Math.round((completeControls / totalControls) * 100) : 0;
   const passRate = completeControls > 0 ? Math.round((passingControls / completeControls) * 100) : 0;
@@ -90,7 +90,7 @@ export default function AnalyticsPage() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
-              { label: "Pass", count: passingControls, color: "#27AE60", bg: "#EAFAF1" },
+              { label: "Complete", count: passingControls, color: "#27AE60", bg: "#EAFAF1" },
               { label: "Exception", count: exceptionControls, color: "#E74C3C", bg: "#FDEDEC" },
               { label: "In Progress", count: inProgressControls, color: "#2E86DE", bg: "#EBF3FB" },
               { label: "Not Started", count: notStartedControls, color: "#95A5A6", bg: "#F2F3F4" },

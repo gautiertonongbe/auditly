@@ -38,7 +38,7 @@ function QuickAction({ label, icon: Icon, href, color }: { label: string; icon: 
 export default function EngagementDetailPage() {
   const [, params] = useRoute("/engagements/:id");
   const id = params?.id ?? "";
-  const { data, refetch } = trpc.engagements.get.useQuery({ id }, { enabled: !!id });
+  const { data, refetch } = trpc.engagements.get.useQuery({ id });
   const updateStatus = trpc.engagements.updateStatus.useMutation({ onSuccess: () => refetch() });
   const seedControls = trpc.controls.seedStandardControls.useMutation({ onSuccess: () => refetch() });
   const exportMutation = trpc.export.exportEngagement.useMutation({

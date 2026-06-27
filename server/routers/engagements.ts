@@ -96,9 +96,9 @@ export const engagementsRouter = router({
           frequency: ctrl.frequency,
           riskLevel: ctrl.riskLevel,
           status: "NotStarted",
-          priorYearResult: ctrl.conclusion ?? null, // carry forward result
-          priorYearException: ctrl.conclusion === "ExceptionNoted" ? "Exception noted in prior year" : null,
-          elevatedSample: ctrl.conclusion === "ExceptionNoted",
+          priorYearResult: ctrl.priorYearResult ?? null,
+          priorYearException: ctrl.priorYearResult === "ExceptionNoted" ? "Exception noted in prior year" : null,
+          elevatedSample: ctrl.priorYearResult === "ExceptionNoted",
           createdAt: new Date(),
           updatedAt: new Date(),
         });

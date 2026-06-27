@@ -17,7 +17,7 @@ export default function SodAnalysisPage() {
   const [accessData, setAccessData] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data: analyses, refetch } = trpc.sod.listByEngagement.useQuery({ engagementId }, { enabled: !!engagementId });
+  const { data: analyses, refetch } = trpc.sod.listByEngagement.useQuery({ engagementId });
   const analyze = trpc.sod.analyze.useMutation({ onSuccess: () => { refetch(); setAccessData(""); setSystemName(""); } });
 
   const totalConflicts = analyses?.reduce((sum, a) => sum + (a.totalConflictsFound ?? 0), 0) ?? 0;
