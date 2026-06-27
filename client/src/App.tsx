@@ -188,7 +188,7 @@ function Sidebar() {
   // Fetch name of active engagement for context display
   const { data: activeEng } = trpc.engagements.get.useQuery({ id: activeEngId ?? "" });
 
-  const needsEng = !activeEngId;
+
   const w = collapsed ? 64 : 240;
 
   return (
@@ -241,20 +241,18 @@ function Sidebar() {
             )}
             {collapsed && <div style={{ height: 4 }} />}
             {items.map((item) => {
-              const requiresEng = "pathKey" in item;
-              const href = "path" in item
+              // Without an engagement, route to the base path so each page can show its own empty state
+              const hrefFinal = "path" in item
                 ? item.path
                 : activeEngId
                   ? `/engagements/${activeEngId}/${item.pathKey}`
-                  : "/engagements";
-              const locked = requiresEng && needsEng;
-              // Locked items (no engagement selected) are NEVER shown as active
-              const active = !locked && (location === href || (href !== "/" && location.startsWith(href)));
+                  : `/${item.pathKey}`;
+              const active = location === hrefFinal || (hrefFinal !== "/" && location.startsWith(hrefFinal));
               const Icon = item.icon;
               return (
-                <Link key={item.label} href={href}>
+                <Link key={item.label} href={hrefFinal}>
                   <a
-                    title={locked ? "Select an engagement first" : (collapsed ? item.label : undefined)}
+                    title={collapsed ? item.label : undefined}
                     style={{
                       display: "flex", alignItems: "center",
                       gap: collapsed ? 0 : 10,
@@ -263,20 +261,18 @@ function Sidebar() {
                       margin: "1px 0",
                       borderLeft: active && !collapsed ? "3px solid var(--accent)" : "3px solid transparent",
                       borderRadius: 0,
-                      color: active ? "var(--accent)" : locked ? "#B0BBCA" : "#4A5568",
+                      color: active ? "var(--accent)" : "#4A5568",
                       background: active ? "var(--accent-light)" : "transparent",
                       fontSize: 13, fontWeight: active ? 600 : 400,
                       transition: "background 0.12s, color 0.12s",
                       cursor: "pointer",
                       textDecoration: "none", whiteSpace: "nowrap",
-                      opacity: locked ? 0.55 : 1,
                     }}
                     onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "#F8FAFC"; } }}
                     onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
                     <Icon size={15} strokeWidth={active ? 2.2 : 1.8} />
-                    {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
-                    {!collapsed && locked && <Lock size={10} style={{ flexShrink: 0, opacity: 0.5 }} />}
+                    {!collapsed && <span>{item.label}</span>}
                   </a>
                 </Link>
               );
@@ -959,6 +955,91 @@ export default function App() {
   );
 }
 
+// ── No-engagement empty state ─────────────────────────────────────────────
+const PAGE_LABELS: Record<string, { label: string; icon: React.ElementType; description: string }> = {
+  controls:   { label: "Controls",            icon: ClipboardList, description: "Define and manage in-scope controls across ITGC and ITAC domains." },
+  workpapers: { label: "Workpapers",          icon: FileText,      description: "Document testing procedures, results, and conclusions per control." },
+  pbc:        { label: "PBC Tracker",         icon: FileCheck2,    description: "Track client-provided documentation requests and status." },
+  ipe:        { label: "IPE Register",        icon: Database,      description: "Test the completeness and accuracy of information produced by the entity." },
+  sod:        { label: "SOD Analysis",        icon: GitMerge,      description: "Identify segregation of duties conflicts from system access data." },
+  exceptions: { label: "Exceptions",          icon: AlertTriangle, description: "Log and track control exceptions and deviation findings." },
+  deficiency: { label: "Deficiency Assessment", icon: Shield,      description: "Assess aggregated exceptions as control deficiencies, significant deficiencies, or material weaknesses." },
+  analytics:  { label: "Analytics",           icon: BarChart2,     description: "View engagement-level metrics, completion rates, and risk indicators." },
+  "audit-trail": { label: "Audit Trail",      icon: Activity,      description: "Immutable chronological log of all actions taken on this engagement." },
+};
+
+function NoEngagementPage({ pathKey }: { pathKey: string }) {
+  const cfg = PAGE_LABELS[pathKey] ?? { label: pathKey, icon: LayoutDashboard, description: "Select an engagement to access this section." };
+  const Icon = cfg.icon;
+  const { data: engagements } = trpc.engagements.list.useQuery();
+  const recent = engagements?.slice(0, 5) ?? [];
+
+  return (
+    <div style={{ padding: "48px 40px", maxWidth: 680, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 40 }}>
+        <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <Icon size={28} color="var(--accent)" strokeWidth={1.6} />
+        </div>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 8px" }}>{cfg.label}</h1>
+        <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0, maxWidth: 420, lineHeight: 1.6 }}>{cfg.description}</p>
+      </div>
+
+      {/* Info banner */}
+      <div style={{ background: "#F0F7FF", border: "1px solid #C3DDF7", borderRadius: 12, padding: "16px 20px", marginBottom: 32, display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <Briefcase size={16} color="#2563EB" style={{ flexShrink: 0, marginTop: 1 }} />
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#1E3A5F", marginBottom: 3 }}>Engagement required</div>
+          <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.55 }}>
+            {cfg.label} is scoped to a specific engagement. Select one below or open an existing engagement to continue.
+          </div>
+        </div>
+      </div>
+
+      {/* Recent engagements */}
+      {recent.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 24 }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Recent Engagements
+          </div>
+          {recent.map(eng => {
+            const sc = { planning: "#2563EB", fieldwork: "#D97706", review: "#7C3AED", complete: "#059669" }[(eng.status ?? "planning")] ?? "#94A3B8";
+            return (
+              <Link key={eng.id} href={`/engagements/${eng.id}/${pathKey}`}>
+                <a style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--border)", textDecoration: "none", transition: "background 0.1s" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#F8FAFC"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Briefcase size={15} color="var(--accent)" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)" }}>{eng.clientName}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{eng.fiscalYear} · {eng.framework} · {eng.clientIndustry}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: sc, background: sc + "18", padding: "3px 10px", borderRadius: 20, textTransform: "capitalize" }}>
+                      {eng.status}
+                    </span>
+                    <ChevronRight size={14} color="#CBD5E1" />
+                  </div>
+                </a>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      <Link href="/engagements">
+        <a style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 20px", background: "var(--accent)", color: "#fff", borderRadius: 9, fontSize: 13, fontWeight: 600, textDecoration: "none", boxShadow: "0 2px 8px rgba(37,99,235,0.2)" }}>
+          <Briefcase size={14} /> Browse all engagements
+        </a>
+      </Link>
+    </div>
+  );
+}
+
 function AppInner() {
   const { user } = useAuth();
   if (!user) return <LoginPage />;
@@ -979,6 +1060,16 @@ function AppInner() {
         <Route path="/engagements/:id/deficiency" component={DeficiencyAssessmentPage} />
         <Route path="/engagements/:id/analytics" component={AnalyticsPage} />
         <Route path="/engagements/:id/audit-trail" component={AuditTrailPage} />
+        {/* Base paths (no engagement) — show select-engagement empty state */}
+        <Route path="/controls">{() => <NoEngagementPage pathKey="controls" />}</Route>
+        <Route path="/workpapers">{() => <NoEngagementPage pathKey="workpapers" />}</Route>
+        <Route path="/pbc">{() => <NoEngagementPage pathKey="pbc" />}</Route>
+        <Route path="/ipe">{() => <NoEngagementPage pathKey="ipe" />}</Route>
+        <Route path="/sod">{() => <NoEngagementPage pathKey="sod" />}</Route>
+        <Route path="/exceptions">{() => <NoEngagementPage pathKey="exceptions" />}</Route>
+        <Route path="/deficiency">{() => <NoEngagementPage pathKey="deficiency" />}</Route>
+        <Route path="/analytics">{() => <NoEngagementPage pathKey="analytics" />}</Route>
+        <Route path="/audit-trail">{() => <NoEngagementPage pathKey="audit-trail" />}</Route>
         {/* Global settings */}
         <Route path="/settings" component={SettingsPage} />
         {/* Fallback */}
