@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
-import { controls } from "../../drizzle/schema";
+import { controls, pbcItems } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 export const controlsRouter = router({
@@ -48,6 +48,55 @@ export const controlsRouter = router({
       const { id, ...updates } = input;
       await ctx.db.update(controls).set({ ...updates, updatedAt: new Date() }).where(eq(controls.id, id));
       return { success: true };
+    }),
+
+  // Create a control with pre-populated PBC requests in one shot (wizard flow)
+  createWithPbc: auditedProcedure
+    .input(z.object({
+      engagementId: z.string(),
+      domain: z.enum(["ITGC", "ITAC"]),
+      itgcType: z.enum(["CM", "AM", "CO", "PD"]).optional(),
+      itacType: z.enum(["Input", "Processing", "Output", "Interface"]).optional(),
+      controlRef: z.string(),
+      objective: z.string(),
+      description: z.string().optional(),
+      frequency: z.enum(["Annual", "SemiAnnual", "Quarterly", "Monthly", "Daily", "Continuous"]),
+      riskLevel: z.enum(["High", "Medium", "Low"]).default("Medium"),
+      pbcRequests: z.array(z.object({
+        description: z.string(),
+        isIpe: z.boolean().default(false),
+      })),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { pbcRequests, ...controlInput } = input;
+
+      const [ctrl] = await ctx.db.insert(controls).values({
+        id: randomUUID(),
+        ...controlInput,
+        status: "NotStarted",
+        elevatedSample: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 14); // default 2-week PBC due date
+
+      for (const req of pbcRequests) {
+        await ctx.db.insert(pbcItems).values({
+          id: randomUUID(),
+          engagementId: input.engagementId,
+          controlId: ctrl.id,
+          description: req.description,
+          isIpe: req.isIpe,
+          status: "Requested",
+          dueDate,
+          requestedDate: new Date(),
+          createdAt: new Date(),
+        });
+      }
+
+      return { control: ctrl, pbcCount: pbcRequests.length };
     }),
 
   // Bulk create standard ITGC control set for an engagement
