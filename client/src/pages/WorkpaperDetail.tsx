@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Sparkles, CheckCircle, AlertTriangle, Save, UserCheck, Edit3, Eye, MessageSquare, Send, Bot, User, ChevronDown, ChevronRight, Shield, BarChart2, FileWarning, Loader2 } from "lucide-react";
+import { ArrowLeft, Sparkles, CheckCircle, AlertTriangle, Save, UserCheck, Edit3, Eye, MessageSquare, Send, Bot, User, ChevronDown, ChevronRight, Shield, BarChart2, FileWarning, Loader2, Scan } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format } from "date-fns";
+import ScreenshotAnnotator from "@/components/audit/ScreenshotAnnotator";
 
 type Tab = "procedure" | "results" | "conclusion";
 type ChatMsg = { role: "user" | "assistant"; text: string; section?: string };
@@ -81,6 +82,7 @@ export default function WorkpaperDetailPage() {
   const [agentExcResult, setAgentExcResult] = useState<{ deficiencyMemo: string; suggestedSeverity: string; managementLetterComment: string } | null>(null);
   const [agentExcDesc, setAgentExcDesc] = useState("");
   const [agentExcCount, setAgentExcCount] = useState(1);
+  const [annotateItem, setAnnotateItem] = useState<{ id: string; fileName: string } | null>(null);
 
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
 
@@ -479,6 +481,18 @@ export default function WorkpaperDetailPage() {
                       {agentEvidence.isPending ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Shield size={13} />}
                       Validate
                     </button>
+                    {(() => {
+                      const sel = (pbcItemsList ?? []).find(p => p.id === selectedPbcId);
+                      const isImage = sel?.fileName && /\.(png|jpg|jpeg|gif|webp)$/i.test(sel.fileName);
+                      return isImage ? (
+                        <button
+                          onClick={() => sel && setAnnotateItem({ id: sel.id, fileName: sel.fileName! })}
+                          style={{ ...btnSec, gap: 5, flexShrink: 0 }}
+                          title="Open screenshot annotator">
+                          <Scan size={13} /> Annotate
+                        </button>
+                      ) : null;
+                    })()}
                   </div>
                   {!pbcItemsList?.some(p => p.status === "Accepted" && p.fileContent) && (
                     <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>No accepted PBC items with extracted text. Upload and accept PBC files first.</p>
@@ -684,6 +698,15 @@ export default function WorkpaperDetailPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Screenshot Annotator */}
+      {annotateItem && (
+        <ScreenshotAnnotator
+          pbcItemId={annotateItem.id}
+          fileName={annotateItem.fileName}
+          onClose={() => setAnnotateItem(null)}
+        />
       )}
 
       {/* Exception modal */}

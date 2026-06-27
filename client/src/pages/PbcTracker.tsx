@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink } from "lucide-react";
+import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink, Mail, Send } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format, differenceInDays } from "date-fns";
 
@@ -190,21 +190,223 @@ function SharePortalModal({ engagementId, onClose }: { engagementId: string; onC
   );
 }
 
+// ── PBC Reminder Email Modal ─────────────────────────────────────────────────
+function PbcReminderModal({
+  items, engagementId, clientName, engagementPeriod, onClose,
+}: {
+  items: Array<{ description: string; dueDate?: Date | string | null; status: string }>;
+  engagementId: string;
+  clientName: string;
+  engagementPeriod: string;
+  onClose: () => void;
+}) {
+  const outstanding = items.filter(i => i.status === "Requested");
+  const today = new Date();
+
+  const buildDraft = () => {
+    const lines = outstanding
+      .map((it, idx) => {
+        const dd = it.dueDate ? new Date(it.dueDate) : null;
+        const daysOver = dd ? differenceInDays(today, dd) : 0;
+        const dueTxt = dd ? ` (due ${format(dd, "MMM d, yyyy")})` : "";
+        const overTxt = daysOver > 0 ? ` — ${daysOver} days overdue` : "";
+        return `  ${idx + 1}. ${it.description}${dueTxt}${overTxt}`;
+      })
+      .join("\n");
+
+    return `Subject: [Action Required] Outstanding Audit Evidence Request — ${clientName}
+
+Dear [Client Contact Name],
+
+As part of our audit of ${clientName} for the period ended ${engagementPeriod}, we are following up on the items listed below that remain outstanding. Timely receipt of these items is critical to completing our fieldwork on schedule.
+
+Outstanding Items (${outstanding.length}):
+${lines}
+
+Please upload your documents using the secure client portal we shared previously, or reply to this email with the files attached.
+
+Do not hesitate to reach out if you have any questions. We appreciate your continued cooperation.
+
+Best regards,
+[Your Name]
+[Firm Name]`;
+  };
+
+  const [body, setBody] = useState(buildDraft);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(body);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const mailtoHref = `mailto:?subject=${encodeURIComponent(`[Action Required] Outstanding Audit Evidence Request — ${clientName}`)}&body=${encodeURIComponent(body)}`;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: 600, maxHeight: "88vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.22)" }}>
+        <div style={{ background: "linear-gradient(135deg, #1E3A5F 0%, #2A4F7C 100%)", padding: "22px 26px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Mail size={16} color="#fff" />
+              </div>
+              <div>
+                <h2 style={{ color: "#fff", fontSize: 15, fontWeight: 700, margin: 0 }}>Send PBC Reminder</h2>
+                <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, margin: 0, marginTop: 1 }}>{outstanding.length} outstanding item{outstanding.length !== 1 ? "s" : ""} · edit and send</p>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 6, color: "#fff", width: 28, height: 28, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          </div>
+        </div>
+        <div style={{ padding: 24 }}>
+          {outstanding.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <CheckCircle size={32} color="#27AE60" style={{ margin: "0 auto 12px" }} />
+              <p style={{ color: "var(--text-muted)", fontSize: 14 }}>All PBC items have been received. No reminder needed.</p>
+            </div>
+          ) : (
+            <>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+                Edit the draft below before sending. The email opens in your mail app pre-filled.
+              </p>
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                rows={22}
+                style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: 14, fontSize: 12, fontFamily: "monospace", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", color: "var(--text)" }}
+              />
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button onClick={onClose} style={btnSec}>Cancel</button>
+                <button onClick={handleCopy} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
+                  {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy Text</>}
+                </button>
+                <a href={mailtoHref} style={{ ...btnPri, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6, color: "#fff" }}>
+                  <Send size={13} /> Open in Mail App
+                </a>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Fieldwork Complete Email Modal ───────────────────────────────────────────
+function FieldworkCompleteModal({
+  items, clientName, engagementPeriod, exceptionsCount, controlsTested, onClose,
+}: {
+  items: Array<{ status: string }>;
+  clientName: string;
+  engagementPeriod: string;
+  exceptionsCount: number;
+  controlsTested: number;
+  onClose: () => void;
+}) {
+  const accepted = items.filter(i => i.status === "Accepted").length;
+  const exceptionNote = exceptionsCount > 0
+    ? `During fieldwork we identified ${exceptionsCount} exception(s). These will be discussed separately in the management letter, and we will follow up with you to agree remediation timelines.`
+    : "We are pleased to confirm that no exceptions were identified during fieldwork.";
+
+  const buildDraft = () => `Subject: Fieldwork Complete — ${clientName} IT Audit (${engagementPeriod})
+
+Dear [Client Contact Name],
+
+We are pleased to inform you that we have completed our IT audit fieldwork for ${clientName} for the period ended ${engagementPeriod}.
+
+Fieldwork Summary:
+  - Controls Tested: ${controlsTested}
+  - Evidence Items Accepted: ${accepted}
+  - Exceptions Identified: ${exceptionsCount}
+
+${exceptionNote}
+
+Next Steps: We will be preparing the final workpaper package and will share our report with you in the coming weeks. If you have any questions in the meantime, please do not hesitate to contact us.
+
+Thank you for your cooperation and the timely provision of evidence throughout this engagement.
+
+Best regards,
+[Your Name]
+[Firm Name]`;
+
+  const [body, setBody] = useState(buildDraft);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(body);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const mailtoHref = `mailto:?subject=${encodeURIComponent(`Fieldwork Complete — ${clientName} IT Audit (${engagementPeriod})`)}&body=${encodeURIComponent(body)}`;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: 600, maxHeight: "88vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.22)" }}>
+        <div style={{ background: "linear-gradient(135deg, #27AE60 0%, #1e8a4a 100%)", padding: "22px 26px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <CheckCircle size={16} color="#fff" />
+              </div>
+              <div>
+                <h2 style={{ color: "#fff", fontSize: 15, fontWeight: 700, margin: 0 }}>Notify Client: Fieldwork Complete</h2>
+                <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, margin: 0, marginTop: 1 }}>{controlsTested} controls tested · {accepted} items accepted</p>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 6, color: "#fff", width: 28, height: 28, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          </div>
+        </div>
+        <div style={{ padding: 24 }}>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            Edit the draft below. Figures are auto-filled from current engagement data.
+          </p>
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            rows={22}
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: 14, fontSize: 12, fontFamily: "monospace", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", color: "var(--text)" }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+            <button onClick={onClose} style={btnSec}>Cancel</button>
+            <button onClick={handleCopy} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
+              {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy Text</>}
+            </button>
+            <a href={mailtoHref} style={{ ...btnPri, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", background: "#27AE60" }}>
+              <Send size={13} /> Open in Mail App
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PbcTrackerPage() {
   const [, params] = useRoute("/engagements/:id/pbc");
   const engagementId = params?.id ?? "";
   const [showCreate, setShowCreate] = useState(false);
   const [showPortal, setShowPortal] = useState(false);
+  const [showReminder, setShowReminder] = useState(false);
+  const [showFieldworkComplete, setShowFieldworkComplete] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
 
   const { data: items, refetch } = trpc.pbc.listByEngagement.useQuery({ engagementId });
   const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId });
+  const { data: engagement } = trpc.engagements.get.useQuery({ id: engagementId });
   const updateStatus = trpc.pbc.updateStatus.useMutation({ onSuccess: () => refetch() });
 
   const filtered = (items ?? []).filter(i => filterStatus === "all" || i.status === filterStatus);
 
   const counts = (items ?? []).reduce<Record<string, number>>((acc, i) => { acc[i.status] = (acc[i.status] ?? 0) + 1; return acc; }, {});
   const overdue = (items ?? []).filter(i => i.dueDate && i.status === "Requested" && differenceInDays(new Date(), new Date(i.dueDate)) > 0).length;
+
+  const clientName = engagement?.clientName ?? "Client";
+  const engagementPeriod = engagement?.periodEnd ? format(new Date(engagement.periodEnd), "MMMM d, yyyy") : "";
+  const controlsTested = (engagement?.controls ?? []).filter(c => c.status !== "NotStarted").length;
+  const exceptionsCount = 0; // pulled from exceptions router if needed
 
   return (
     <div style={{ padding: 32 }}>
@@ -221,7 +423,13 @@ export default function PbcTrackerPage() {
             {items?.length ?? 0} items · {counts.Accepted ?? 0} accepted · {overdue > 0 ? <span style={{ color: "var(--red)" }}>{overdue} overdue</span> : "none overdue"}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setShowReminder(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
+            <Mail size={14} /> Send Reminder
+          </button>
+          <button onClick={() => setShowFieldworkComplete(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6, borderColor: "#A9DFBF", color: "var(--green)" }}>
+            <Send size={14} /> Notify Client: Done
+          </button>
           <button onClick={() => setShowPortal(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
             <Share2 size={14} /> Share Portal
           </button>
@@ -324,6 +532,25 @@ export default function PbcTrackerPage() {
 
       {showCreate && <AddPbcModal engagementId={engagementId} onClose={() => setShowCreate(false)} onCreated={() => refetch()} />}
       {showPortal && <SharePortalModal engagementId={engagementId} onClose={() => setShowPortal(false)} />}
+      {showReminder && (
+        <PbcReminderModal
+          items={items ?? []}
+          engagementId={engagementId}
+          clientName={clientName}
+          engagementPeriod={engagementPeriod}
+          onClose={() => setShowReminder(false)}
+        />
+      )}
+      {showFieldworkComplete && (
+        <FieldworkCompleteModal
+          items={items ?? []}
+          clientName={clientName}
+          engagementPeriod={engagementPeriod}
+          exceptionsCount={exceptionsCount}
+          controlsTested={controlsTested}
+          onClose={() => setShowFieldworkComplete(false)}
+        />
+      )}
     </div>
   );
 }

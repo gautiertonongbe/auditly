@@ -4,7 +4,7 @@ import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
 import { workpapers, controls, pbcItems, engagementMembers, users, engagements, auditTrail } from "../../drizzle/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { generateWorkpaperWriteup } from "../lib/ai";
+import { generateWorkpaperWriteup, generateAnnotations } from "../lib/ai";
 import { getSampleSize, getSamplingRationale, selectRandomSample } from "../lib/sampling";
 import { sendWorkpaperReviewRequest } from "../lib/email";
 import { getSystemPrompt, validateEvidence, agentSamplingAdvisor, agentExceptionDrafter, agentPeerReview } from "../lib/auditSkills";
@@ -425,6 +425,53 @@ Write in professional past-tense audit language.`;
       });
 
       return reviewResult;
+    }),
+
+  // ── Agent: Screenshot Annotation ─────────────────────────────────────────
+  agentAnnotateScreenshot: auditedProcedure
+    .input(z.object({ pbcItemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [item] = await ctx.db.select().from(pbcItems).where(eq(pbcItems.id, input.pbcItemId));
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!item.fileUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No file uploaded for this PBC item." });
+
+      // Determine if it's an image type
+      const lowerName = (item.fileName ?? "").toLowerCase();
+      const isImage = /\.(png|jpg|jpeg|gif|webp)$/.test(lowerName);
+      if (!isImage) throw new TRPCError({ code: "BAD_REQUEST", message: "Screenshot annotation only works with image files (PNG, JPG, JPEG, GIF, WEBP)." });
+
+      const ext = lowerName.split(".").pop() ?? "png";
+      const mediaTypeMap: Record<string, "image/png" | "image/jpeg" | "image/gif" | "image/webp"> = {
+        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+      };
+      const mediaType = mediaTypeMap[ext] ?? "image/png";
+
+      // Fetch image from S3 and convert to base64
+      const response = await fetch(item.fileUrl);
+      if (!response.ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to fetch image from storage." });
+      const arrayBuffer = await response.arrayBuffer();
+      const imageBase64 = Buffer.from(arrayBuffer).toString("base64");
+
+      // Get control context for better annotation
+      let controlObjective = "IT control evidence";
+      let controlType = "CM";
+      if (item.controlId) {
+        const [ctrl] = await ctx.db.select().from(controls).where(eq(controls.id, item.controlId));
+        if (ctrl) {
+          controlObjective = ctrl.objective;
+          controlType = ctrl.itgcType ?? ctrl.itacType ?? "CM";
+        }
+      }
+
+      const boxes = await generateAnnotations({
+        imageBase64,
+        mediaType,
+        controlType,
+        controlObjective,
+        pbcDescription: item.description,
+      });
+
+      return { boxes, mediaType, imageBase64 };
     }),
 
   // ── Agent: Exception Drafter ─────────────────────────────────────────────
