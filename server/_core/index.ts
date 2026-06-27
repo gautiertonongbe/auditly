@@ -480,6 +480,17 @@ app.use("/api/upload", uploadLimiter);
 // All other API traffic gets the general limiter
 app.use("/api/trpc", apiLimiter, createExpressMiddleware({ router: appRouter, createContext }));
 
+// ── Serve built SPA in production ────────────────────────────────────────────
+if (process.env.NODE_ENV === "production") {
+  const { join } = await import("path");
+  const { existsSync } = await import("fs");
+  const distPath = join(process.cwd(), "dist/public");
+  if (existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => res.sendFile(join(distPath, "index.html")));
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`[Auditly] Server running on port ${PORT}`);
 });
