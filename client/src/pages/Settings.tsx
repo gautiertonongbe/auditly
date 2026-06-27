@@ -20,7 +20,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div style={{ padding: 32, maxWidth: 820 }}>
+    <div style={{ padding: 32 }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-strong)", margin: 0 }}>Settings</h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Manage your account and firm preferences</p>
@@ -495,7 +495,7 @@ function SecurityTab() {
 }
 
 const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
-  admin:    { bg: "#FEF3C7", color: "#D97706" },
+  admin:    { bg: "#EDE9FE", color: "#6D28D9" },
   partner:  { bg: "#EDE9FE", color: "#7C3AED" },
   manager:  { bg: "#DBEAFE", color: "#1D4ED8" },
   senior:   { bg: "#D1FAE5", color: "#065F46" },

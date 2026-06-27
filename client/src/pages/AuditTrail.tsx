@@ -45,7 +45,7 @@ export default function AuditTrailPage() {
   const uniqueEntities = [...new Set((trail ?? []).map(e => e.entityType))];
 
   return (
-    <div style={{ padding: 32, maxWidth: 900 }}>
+    <div style={{ padding: 32 }}>
       <Link href={`/engagements/${engagementId}`}>
         <a style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", textDecoration: "none", marginBottom: 16 }}>
           <ArrowLeft size={14} /> Engagement Overview

@@ -3,10 +3,11 @@
   "configurations": [
     {
       "name": "auditly-client",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite"],
-      "cwd": "/Users/lemac/Desktop/Auditly/client",
-      "port": 3000
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:client"],
+      "cwd": "/Users/lemac/Desktop/Auditly",
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

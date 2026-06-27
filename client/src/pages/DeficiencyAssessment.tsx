@@ -27,7 +27,7 @@ export default function DeficiencyAssessmentPage() {
   const selected = openExceptions.filter(e => selectedIds.includes(e.id));
 
   return (
-    <div style={{ padding: 32, maxWidth: 860 }}>
+    <div style={{ padding: 32 }}>
       <Link href={`/engagements/${engagementId}/exceptions`}>
         <a style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", textDecoration: "none", marginBottom: 16 }}>
           <ArrowLeft size={14} /> Exception Log

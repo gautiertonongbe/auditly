@@ -153,7 +153,7 @@ export default function WorkpaperDetailPage() {
     });
 
   return (
-    <div style={{ padding: 32, maxWidth: 960 }}>
+    <div style={{ padding: 32 }}>
       <Link href={`/engagements/${engId}/controls`}>
         <a style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", textDecoration: "none", marginBottom: 16 }}>
           <ArrowLeft size={14} /> Controls
@@ -512,7 +512,7 @@ export default function WorkpaperDetailPage() {
                     </button>
                   </div>
                   {procedureMode === "manual" && (
-                    <span style={{ fontSize: 11, color: "#D97706", fontWeight: 600 }}>You have full control — write the procedure directly, no AI generation</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>You have full control — write the procedure directly, no AI generation</span>
                   )}
                   {procedureMode === "ai" && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>AI generates content using the templates below as strict structure guides</span>
