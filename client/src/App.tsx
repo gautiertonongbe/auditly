@@ -1,5 +1,5 @@
 import { useState, createContext, useContext } from "react";
-import { Route, Switch, Link, useLocation } from "wouter";
+import { Route, Switch, Link, useLocation, useRoute } from "wouter";
 import {
   LayoutDashboard, Briefcase, ClipboardList, FileText,
   AlertTriangle, Database, Shield, BarChart2,
@@ -18,6 +18,7 @@ import DeficiencyAssessmentPage from "./pages/DeficiencyAssessment";
 import AnalyticsPage from "./pages/Analytics";
 import AuditTrailPage from "./pages/AuditTrail";
 import SettingsPage from "./pages/Settings";
+import ClientPortalPage from "./pages/ClientPortal";
 
 // ── Auth Context ────────────────────────────────────────────────────────────
 
@@ -264,6 +265,10 @@ function LoginPage() {
 // ── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // Portal routes are public — render them before auth
+  const [isPortal] = useRoute("/portal/:token");
+  if (isPortal) return <ClientPortalPage />;
+
   return (
     <AuthProvider>
       <AppInner />

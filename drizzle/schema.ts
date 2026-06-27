@@ -111,6 +111,9 @@ export const pbcItems = pgTable("pbc_items", {
   isIpe: boolean("is_ipe").notNull().default(false), // also serves as IPE
   rejectionReason: text("rejection_reason"),
   notes: text("notes"),
+  // Extracted text content from uploaded file (used for AI analysis)
+  fileContent: text("file_content"),
+  aiClassification: text("ai_classification"), // JSON: { domain, controlType, isIpe, suggestedControl }
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -247,6 +250,20 @@ export const auditTrail = pgTable("audit_trail", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
+// ── Client Portal Tokens ───────────────────────────────────────────────────
+
+export const portalTokens = pgTable("portal_tokens", {
+  id: text("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  engagementId: text("engagement_id").notNull().references(() => engagements.id),
+  clientName: text("client_name").notNull(),
+  clientEmail: text("client_email"),
+  createdBy: text("created_by").notNull().references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // ── Export Log ─────────────────────────────────────────────────────────────

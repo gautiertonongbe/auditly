@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload } from "lucide-react";
+import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format, differenceInDays } from "date-fns";
 
@@ -61,10 +61,140 @@ function AddPbcModal({ engagementId, onClose, onCreated }: { engagementId: strin
   );
 }
 
+function SharePortalModal({ engagementId, onClose }: { engagementId: string; onClose: () => void }) {
+  const [form, setForm] = useState({ clientName: "", clientEmail: "", expiryDays: "14" });
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const { data: existing, refetch: refetchLinks } = trpc.portal.listByEngagement.useQuery({ engagementId });
+  const createLink = trpc.portal.createLink.useMutation({
+    onSuccess: (data) => {
+      setGeneratedUrl(data.portalUrl);
+      refetchLinks();
+    },
+  });
+  const revokeLink = trpc.portal.revoke.useMutation({ onSuccess: () => refetchLinks() });
+
+  const handleCopy = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const activeLinks = (existing ?? []).filter(l => l.isActive);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: 520, maxHeight: "85vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.22)" }}>
+        <div style={{ background: "linear-gradient(135deg, #1E3A5F 0%, #2A4F7C 100%)", padding: "22px 26px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Share2 size={16} color="#fff" />
+              </div>
+              <div>
+                <h2 style={{ color: "#fff", fontSize: 15, fontWeight: 700, margin: 0 }}>Client Portal Link</h2>
+                <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, margin: 0, marginTop: 1 }}>Send clients a secure link to upload PBC documents</p>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 6, color: "#fff", width: 28, height: 28, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          </div>
+        </div>
+
+        <div style={{ padding: 24 }}>
+          {!generatedUrl ? (
+            <>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 14px" }}>Generate New Portal Link</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+                <div>
+                  <label style={lbl}>Client Name *</label>
+                  <input value={form.clientName} onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))}
+                    placeholder="e.g. Acme Corp" style={inp} />
+                </div>
+                <div>
+                  <label style={lbl}>Client Email (optional)</label>
+                  <input value={form.clientEmail} onChange={e => setForm(f => ({ ...f, clientEmail: e.target.value }))}
+                    placeholder="client@company.com" type="email" style={inp} />
+                </div>
+                <div>
+                  <label style={lbl}>Link Expires In</label>
+                  <select value={form.expiryDays} onChange={e => setForm(f => ({ ...f, expiryDays: e.target.value }))} style={inp}>
+                    <option value="7">7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="30">30 days</option>
+                    <option value="60">60 days</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
+                <button onClick={onClose} style={btnSec}>Cancel</button>
+                <button
+                  onClick={() => createLink.mutate({ engagementId, clientName: form.clientName, clientEmail: form.clientEmail || undefined, expiryDays: parseInt(form.expiryDays) })}
+                  disabled={!form.clientName || createLink.isPending}
+                  style={{ ...btnPri, opacity: !form.clientName ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Share2 size={13} />
+                  {createLink.isPending ? "Generating..." : "Generate Link"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: "center" }}>
+              <div style={{ width: 52, height: 52, borderRadius: 26, background: "#EAFAF1", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                <CheckCircle size={24} color="#27AE60" />
+              </div>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 6px" }}>Portal Link Generated</h3>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18 }}>Share this link with your client. They can upload files without creating an account.</p>
+              <div style={{ background: "var(--surface-alt)", borderRadius: 10, padding: 14, marginBottom: 16, border: "1px solid var(--border)" }}>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 8px", fontWeight: 600, textAlign: "left" }}>Portal URL</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <code style={{ flex: 1, fontSize: 11, color: "var(--accent)", wordBreak: "break-all", textAlign: "left", background: "none", lineHeight: 1.5 }}>{generatedUrl}</code>
+                  <button onClick={() => handleCopy(generatedUrl)} style={{ flexShrink: 0, background: copied ? "#EAFAF1" : "var(--navy)", border: "none", borderRadius: 7, color: copied ? "#27AE60" : "#fff", padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                    {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                <a href={generatedUrl} target="_blank" rel="noreferrer" style={{ ...btnSec, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <ExternalLink size={12} /> Preview Portal
+                </a>
+                <button onClick={() => { setGeneratedUrl(null); setForm({ clientName: "", clientEmail: "", expiryDays: "14" }); }} style={btnSec}>Generate Another</button>
+                <button onClick={onClose} style={btnPri}>Done</button>
+              </div>
+            </div>
+          )}
+
+          {activeLinks && activeLinks.length > 0 && !generatedUrl && (
+            <div style={{ marginTop: 24, borderTop: "1px solid var(--border)", paddingTop: 18 }}>
+              <h3 style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 12px" }}>Active Portal Links</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {activeLinks.map(link => (
+                  <div key={link.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-alt)", borderRadius: 8, padding: "10px 12px", border: "1px solid var(--border)" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", margin: 0 }}>{link.clientName}</p>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0" }}>Expires {format(new Date(link.expiresAt), "MMM d, yyyy")}</p>
+                    </div>
+                    <button onClick={() => handleCopy(`${window.location.origin}/portal/${link.token}`)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", padding: "4px 8px", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                      <Copy size={11} /> Copy
+                    </button>
+                    <button onClick={() => revokeLink.mutate({ tokenId: link.id })} style={{ background: "none", border: "1px solid #FECACA", borderRadius: 6, color: "var(--red)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PbcTrackerPage() {
   const [, params] = useRoute("/engagements/:id/pbc");
   const engagementId = params?.id ?? "";
   const [showCreate, setShowCreate] = useState(false);
+  const [showPortal, setShowPortal] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
 
   const { data: items, refetch } = trpc.pbc.listByEngagement.useQuery({ engagementId });
@@ -91,9 +221,14 @@ export default function PbcTrackerPage() {
             {items?.length ?? 0} items · {counts.Accepted ?? 0} accepted · {overdue > 0 ? <span style={{ color: "var(--red)" }}>{overdue} overdue</span> : "none overdue"}
           </p>
         </div>
-        <button onClick={() => setShowCreate(true)} style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6 }}>
-          <Plus size={14} /> Request PBC Item
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setShowPortal(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
+            <Share2 size={14} /> Share Portal
+          </button>
+          <button onClick={() => setShowCreate(true)} style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6 }}>
+            <Plus size={14} /> Request PBC Item
+          </button>
+        </div>
       </div>
 
       {/* Status filters */}
@@ -188,6 +323,7 @@ export default function PbcTrackerPage() {
       </div>
 
       {showCreate && <AddPbcModal engagementId={engagementId} onClose={() => setShowCreate(false)} onCreated={() => refetch()} />}
+      {showPortal && <SharePortalModal engagementId={engagementId} onClose={() => setShowPortal(false)} />}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { User, Building2, Bell, Shield, Key, Save } from "lucide-react";
+import { User, Building2, Bell, Shield, Key, Save, Users, Plus, Trash2, Crown, ChevronDown } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-type Tab = "profile" | "firm" | "notifications" | "security";
+type Tab = "profile" | "firm" | "team" | "notifications" | "security";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -11,6 +11,7 @@ export default function SettingsPage() {
   const tabs: { id: Tab; label: string; icon: typeof User }[] = [
     { id: "profile",       label: "Profile",       icon: User },
     { id: "firm",          label: "Firm",           icon: Building2 },
+    { id: "team",          label: "Team",           icon: Users },
     { id: "notifications", label: "Notifications",  icon: Bell },
     { id: "security",      label: "Security",       icon: Shield },
   ];
@@ -47,6 +48,7 @@ export default function SettingsPage() {
         <div style={{ flex: 1 }}>
           {activeTab === "profile" && <ProfileTab me={me} />}
           {activeTab === "firm" && <FirmTab />}
+          {activeTab === "team" && <TeamTab />}
           {activeTab === "notifications" && <NotificationsTab />}
           {activeTab === "security" && <SecurityTab />}
         </div>
@@ -256,6 +258,122 @@ function SecurityTab() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
+  admin:    { bg: "#FEF3C7", color: "#D97706" },
+  partner:  { bg: "#EDE9FE", color: "#7C3AED" },
+  manager:  { bg: "#DBEAFE", color: "#1D4ED8" },
+  senior:   { bg: "#D1FAE5", color: "#065F46" },
+  preparer: { bg: "#F3F4F6", color: "#374151" },
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin", partner: "Partner", manager: "Manager", senior: "Senior", preparer: "Preparer",
+};
+
+function TeamTab() {
+  const { data: allUsers, refetch } = trpc.users.listAll.useQuery();
+  const { data: engagements } = trpc.engagements.list.useQuery();
+  const [selectedEngId, setSelectedEngId] = useState<string>("");
+  const { data: team, refetch: refetchTeam } = trpc.users.listEngagementTeam.useQuery(
+    { engagementId: selectedEngId },
+  );
+  const updateRole = trpc.users.updateMemberRole.useMutation({ onSuccess: () => refetchTeam() });
+  const addMember = trpc.users.addToEngagement.useMutation({ onSuccess: () => refetchTeam() });
+  const removeMember = trpc.users.removeFromEngagement.useMutation({ onSuccess: () => refetchTeam() });
+
+  const [addUserId, setAddUserId] = useState("");
+  const [addRole, setAddRole] = useState<"preparer" | "senior" | "manager" | "partner" | "admin">("preparer");
+
+  const teamUserIds = new Set(team?.map(m => m.userId) ?? []);
+  const availableUsers = allUsers?.filter(u => !teamUserIds.has(u.id)) ?? [];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Engagement picker */}
+      <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+          <Users size={16} /> Team Management
+        </h2>
+        <div>
+          <label style={lbl}>Select Engagement</label>
+          <select value={selectedEngId} onChange={e => setSelectedEngId(e.target.value)} style={{ ...inp, cursor: "pointer" }}>
+            <option value="">Choose an engagement...</option>
+            {engagements?.map(e => (
+              <option key={e.id} value={e.id}>{e.clientName} — FY{e.fiscalYear}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {selectedEngId && (
+        <>
+          {/* Current team */}
+          <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-alt)" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Current Team ({team?.length ?? 0})</div>
+            </div>
+            {team?.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No team members yet.</div>
+            )}
+            {team?.map(member => {
+              const rc = ROLE_COLORS[member.role] ?? ROLE_COLORS.preparer;
+              return (
+                <div key={member.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--navy)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                    {member.user?.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-strong)" }}>{member.user?.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{member.user?.email}</div>
+                  </div>
+                  <select
+                    value={member.role}
+                    onChange={e => updateRole.mutate({ memberId: member.id, role: e.target.value as "preparer" | "senior" | "manager" | "partner" | "admin" })}
+                    style={{ height: 32, border: `1px solid ${rc.color}40`, borderRadius: 20, padding: "0 10px", fontSize: 12, fontWeight: 600, background: rc.bg, color: rc.color, cursor: "pointer" }}>
+                    {Object.keys(ROLE_LABELS).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  </select>
+                  <button onClick={() => removeMember.mutate({ memberId: member.id })}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add member */}
+          <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)", marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+              <Plus size={14} /> Add Team Member
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 10, alignItems: "end" }}>
+              <div>
+                <label style={lbl}>User</label>
+                <select value={addUserId} onChange={e => setAddUserId(e.target.value)} style={{ ...inp, cursor: "pointer" }}>
+                  <option value="">Select a user...</option>
+                  {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Role</label>
+                <select value={addRole} onChange={e => setAddRole(e.target.value as "preparer" | "senior" | "manager" | "partner" | "admin")} style={{ ...inp, cursor: "pointer" }}>
+                  {Object.keys(ROLE_LABELS).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                </select>
+              </div>
+              <button
+                onClick={() => { if (addUserId) { addMember.mutate({ engagementId: selectedEngId, userId: addUserId, role: addRole }); setAddUserId(""); } }}
+                disabled={!addUserId || addMember.isPending}
+                style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6, opacity: !addUserId ? 0.5 : 1 }}>
+                <Plus size={13} /> Add
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
