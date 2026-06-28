@@ -78,6 +78,7 @@ void (async () => {
   await tryExec(`ALTER TABLE pbc_items ADD COLUMN annotated_image_url TEXT`);
   await tryExec(`ALTER TABLE pbc_items ADD COLUMN annotated_image_base64 MEDIUMTEXT`);
   await tryExec(`ALTER TABLE pbc_items ADD COLUMN test_attributes JSON`);
+  await tryExec(`ALTER TABLE pbc_items ADD COLUMN ai_check JSON`);
   await tryExec(`ALTER TABLE workpapers ADD COLUMN procedure_template TEXT`);
   await tryExec(`ALTER TABLE workpapers ADD COLUMN results_template TEXT`);
   await tryExec(`ALTER TABLE workpapers ADD COLUMN conclusion_template TEXT`);

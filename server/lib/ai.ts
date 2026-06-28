@@ -276,6 +276,44 @@ Return JSON: { "assessment": "full assessment memo text (4-6 sentences)", "final
   return JSON.parse(text);
 }
 
+// ── Evidence Match Checker ────────────────────────────────────────────────────
+// Quick AI pass on a received file: does it actually satisfy the PBC request?
+export async function checkPbcEvidence(params: {
+  requestDescription: string;
+  fileName: string;
+  fileContent: string;
+}): Promise<{ status: "Match" | "Partial" | "Mismatch"; summary: string; flags: string[] }> {
+  const prompt = `You are a SOX IT auditor reviewing client-provided evidence.
+
+PBC request: "${params.requestDescription}"
+File received: "${params.fileName}"
+File content preview:
+${params.fileContent.slice(0, 3000)}
+
+Evaluate whether this file satisfies the audit request. Return ONLY valid JSON:
+{
+  "status": "Match" | "Partial" | "Mismatch",
+  "summary": "<one sentence: what this file contains and whether it covers the request>",
+  "flags": ["<short flag if any issue, e.g. 'Wrong period', 'Missing approval column', 'Only covers subset'>"]
+}
+
+Rules:
+- "Match": file clearly and completely satisfies the request
+- "Partial": file is relevant but incomplete or partially satisfies
+- "Mismatch": file does not match the request at all
+- summary must be ≤ 20 words
+- flags array may be empty if status is Match`;
+
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 256,
+    messages: [{ role: "user", content: prompt }],
+  });
+  const text = (response.content[0] as { text: string }).text.trim();
+  const json = text.startsWith("{") ? text : text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  return JSON.parse(json);
+}
+
 export async function classifyPbcFile(params: {
   fileName: string;
   fileContent: string; // first 2000 chars of parsed text

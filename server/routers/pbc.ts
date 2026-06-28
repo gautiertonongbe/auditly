@@ -4,6 +4,7 @@ import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
 import { pbcItems, auditTrail } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadToS3 } from "../lib/s3";
+import { checkPbcEvidence } from "../lib/ai";
 
 export const pbcRouter = router({
   listByEngagement: protectedProcedure
@@ -63,6 +64,35 @@ export const pbcRouter = router({
       });
 
       return { success: true };
+    }),
+
+  // AI evidence check: does this file match the PBC request?
+  checkEvidence: auditedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [item] = await ctx.db.select().from(pbcItems).where(eq(pbcItems.id, input.id)).limit(1);
+      if (!item) throw new Error("PBC item not found");
+      if (!item.fileContent) throw new Error("No file content to analyze");
+
+      const result = await checkPbcEvidence({
+        requestDescription: item.description,
+        fileName: item.fileName ?? "uploaded file",
+        fileContent: item.fileContent,
+      });
+
+      await ctx.db.update(pbcItems).set({ aiCheck: result }).where(eq(pbcItems.id, input.id));
+
+      await ctx.db.insert(auditTrail).values({
+        id: randomUUID(),
+        entityType: "pbc",
+        entityId: input.id,
+        action: "ai_check_complete",
+        description: `AI evidence check: ${result.status} — ${result.summary}`,
+        userId: ctx.user.id,
+        timestamp: new Date(),
+      });
+
+      return result;
     }),
 
   // Save annotated screenshot + annotation boxes

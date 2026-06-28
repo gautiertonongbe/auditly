@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink, Mail, Send, Paperclip, Download, Sparkles, ChevronRight, MoreHorizontal, UserCheck } from "lucide-react";
+import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink, Mail, Send, Paperclip, Download, Sparkles, ChevronRight, MoreHorizontal, UserCheck, TriangleAlert, CircleCheck, CircleMinus } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format, differenceInDays } from "date-fns";
 
@@ -469,12 +469,31 @@ export default function PbcTrackerPage() {
     },
   });
 
+  const checkEvidence = trpc.pbc.checkEvidence.useMutation({ onSuccess: () => refetch() });
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+
   const allItems = items ?? [];
   const counts = allItems.reduce<Record<string, number>>((acc, i) => { acc[i.status] = (acc[i.status] ?? 0) + 1; return acc; }, {});
   const receivedCount = (counts.Received ?? 0) + (counts.Accepted ?? 0);
   const acceptedCount = counts.Accepted ?? 0;
   const pendingCount = counts.Requested ?? 0;
   const overdue = allItems.filter(i => i.dueDate && i.status === "Requested" && differenceInDays(new Date(), new Date(i.dueDate)) > 0).length;
+
+  // Auto-trigger AI check for received items that have file content but no check yet
+  useEffect(() => {
+    const needsCheck = allItems.find(i =>
+      (i.status === "Received" || i.status === "Accepted") &&
+      (i as { fileContent?: string | null }).fileContent &&
+      !(i as { aiCheck?: unknown }).aiCheck &&
+      checkingId !== i.id &&
+      !checkEvidence.isPending
+    );
+    if (needsCheck) {
+      setCheckingId(needsCheck.id);
+      checkEvidence.mutate({ id: needsCheck.id });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allItems.map(i => i.id + i.status).join(","), checkEvidence.isPending]);
 
   const clientName = engagement?.clientName ?? "Client";
   const engagementPeriod = engagement?.periodEnd ? format(new Date(engagement.periodEnd), "MMMM d, yyyy") : "";
@@ -607,89 +626,129 @@ export default function PbcTrackerPage() {
       </div>
 
       {/* ── Evidence Items ──────────────────────────────────────────────────── */}
-      <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "var(--surface-alt)" }}>
-              {["Control", "Evidence Description", "File", "Status", ""].map(h => (
-                <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {allItems.map((item, i) => {
-              const cfg = STATUS_CFG[item.status] ?? STATUS_CFG.Requested;
-              const StatusIcon = cfg.icon;
-              const ctrl = controls?.find(c => c.id === item.controlId);
-              const dueDate = item.dueDate ? new Date(item.dueDate) : null;
-              const isOverdue = dueDate && item.status === "Requested" && differenceInDays(new Date(), dueDate) > 0;
-              const daysOverdue = dueDate ? differenceInDays(new Date(), dueDate) : 0;
+      <div style={{ display: "flex", flexDirection: "column", gap: 0, background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 180px 120px 180px", gap: 0, background: "var(--surface-alt)", borderBottom: "1px solid var(--border)" }}>
+          {["Control", "Evidence Requested", "AI Review", "Status", "Action"].map(h => (
+            <div key={h} style={{ padding: "10px 16px", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{h}</div>
+          ))}
+        </div>
 
-              return (
-                <tr key={item.id} style={{ borderBottom: i < allItems.length - 1 ? "1px solid var(--border)" : "none", background: i % 2 === 0 ? "#fff" : "var(--surface-alt)" }}>
-                  <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
-                    {ctrl
-                      ? <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 7px", borderRadius: 4 }}>{ctrl.controlRef}</span>
-                      : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>}
-                  </td>
-                  <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--text)", maxWidth: 320 }}>
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</div>
-                    <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
-                      {item.isIpe && <span style={{ fontSize: 10, background: "#E8F8F5", color: "#16A085", padding: "1px 6px", borderRadius: 3, fontWeight: 600 }}>IPE</span>}
-                      {dueDate && isOverdue && <span style={{ fontSize: 10, color: "var(--red)", fontWeight: 600 }}>{daysOverdue}d overdue</span>}
-                      {dueDate && !isOverdue && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Due {format(dueDate, "MMM d")}</span>}
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    {item.fileName ? (
-                      item.fileUrl
-                        ? <a href={item.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.fileName}>
-                            <Paperclip size={11} /> {item.fileName}
+        {allItems.map((item, i) => {
+          const cfg = STATUS_CFG[item.status] ?? STATUS_CFG.Requested;
+          const StatusIcon = cfg.icon;
+          const ctrl = controls?.find(c => c.id === item.controlId);
+          const dueDate = item.dueDate ? new Date(item.dueDate) : null;
+          const isOverdue = dueDate && item.status === "Requested" && differenceInDays(new Date(), dueDate) > 0;
+          const aiCheck = (item as { aiCheck?: { status: string; summary: string; flags: string[] } | null }).aiCheck;
+          const isCheckingThis = checkingId === item.id && checkEvidence.isPending;
+          const hasFile = !!item.fileName;
+          const hasContent = !!(item as { fileContent?: string | null }).fileContent;
+
+          const aiColor = aiCheck?.status === "Match" ? "#27AE60" : aiCheck?.status === "Partial" ? "#F39C12" : aiCheck?.status === "Mismatch" ? "#E74C3C" : "var(--text-muted)";
+          const AiIcon = aiCheck?.status === "Match" ? CircleCheck : aiCheck?.status === "Mismatch" ? XCircle : aiCheck?.status === "Partial" ? TriangleAlert : Sparkles;
+
+          return (
+            <div key={item.id} style={{ display: "grid", gridTemplateColumns: "100px 1fr 180px 120px 180px", borderBottom: i < allItems.length - 1 ? "1px solid var(--border)" : "none", background: i % 2 === 0 ? "#fff" : "var(--surface-alt)", alignItems: "center" }}>
+              {/* Control */}
+              <div style={{ padding: "14px 16px" }}>
+                {ctrl
+                  ? <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 8px", borderRadius: 4, whiteSpace: "nowrap" }}>{ctrl.controlRef}</span>
+                  : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>}
+              </div>
+
+              {/* Description + file */}
+              <div style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 13, color: "var(--text-strong)", fontWeight: 500, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {hasFile
+                    ? (item.fileUrl
+                        ? <a href={item.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}>
+                            <Paperclip size={10} /> {item.fileName}
                           </a>
-                        : <span style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.fileName}>
-                            <Paperclip size={11} /> {item.fileName}
-                          </span>
-                    ) : (
-                      <span style={{ fontSize: 12, color: "#CBD5E1", display: "flex", alignItems: "center", gap: 4 }}>
-                        <Upload size={11} /> Awaiting file
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 600 }}>
-                      <StatusIcon size={11} /> {cfg.label}
-                    </span>
-                  </td>
-                  <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
-                    {item.status === "Received" && (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button onClick={() => updateStatus.mutate({ id: item.id, status: "Accepted" })}
-                          style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid #A9DFBF", background: "#EAFAF1", color: "#27AE60", cursor: "pointer", fontWeight: 600 }}>
-                          Accept
-                        </button>
-                        <button onClick={() => updateStatus.mutate({ id: item.id, status: "Rejected" })}
-                          style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid #FECACA", background: "#FDEDEC", color: "#E74C3C", cursor: "pointer", fontWeight: 600 }}>
-                          Reject
-                        </button>
+                        : <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 3 }}>
+                            <Paperclip size={10} /> {item.fileName}
+                          </span>)
+                    : <span style={{ fontSize: 11, color: "#CBD5E1", display: "flex", alignItems: "center", gap: 3 }}><Upload size={10} /> Awaiting file</span>
+                  }
+                  {item.isIpe && <span style={{ fontSize: 10, background: "#E8F8F5", color: "#16A085", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>IPE</span>}
+                  {dueDate && isOverdue && <span style={{ fontSize: 10, color: "var(--red)", fontWeight: 600 }}>{differenceInDays(new Date(), dueDate)}d overdue</span>}
+                  {dueDate && !isOverdue && item.status === "Requested" && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Due {format(dueDate, "MMM d")}</span>}
+                </div>
+              </div>
+
+              {/* AI review */}
+              <div style={{ padding: "14px 16px" }}>
+                {isCheckingThis ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)" }}>
+                    <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 5, border: "1.5px solid var(--border)", borderTopColor: "var(--accent)", animation: "spin 0.8s linear infinite" }} />
+                    Analyzing...
+                  </div>
+                ) : aiCheck ? (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
+                      <AiIcon size={12} color={aiColor} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: aiColor }}>{aiCheck.status}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>{aiCheck.summary}</div>
+                    {aiCheck.flags.length > 0 && (
+                      <div style={{ marginTop: 3 }}>
+                        {aiCheck.flags.map(f => (
+                          <span key={f} style={{ fontSize: 10, background: "#FEF9E7", color: "#F39C12", padding: "1px 5px", borderRadius: 3, display: "inline-block", marginRight: 3, marginTop: 2 }}>{f}</span>
+                        ))}
                       </div>
                     )}
-                    {item.status === "Requested" && (
-                      <button onClick={() => updateStatus.mutate({ id: item.id, status: "Received" })}
-                        style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer" }}>
-                        Mark Received
-                      </button>
-                    )}
-                    {item.status === "Accepted" && (
-                      <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#27AE60" }}>
-                        <CheckCircle size={12} /> Done
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                ) : hasContent ? (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Running...</span>
+                ) : (
+                  <span style={{ fontSize: 11, color: "#CBD5E1" }}>No file yet</span>
+                )}
+              </div>
+
+              {/* Status */}
+              <div style={{ padding: "14px 16px" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+                  <StatusIcon size={11} /> {cfg.label}
+                </span>
+              </div>
+
+              {/* Action */}
+              <div style={{ padding: "14px 16px" }}>
+                {item.status === "Received" && (
+                  <div style={{ display: "flex", gap: 5 }}>
+                    <button onClick={() => updateStatus.mutate({ id: item.id, status: "Accepted" })}
+                      style={{ fontSize: 12, padding: "5px 12px", borderRadius: 6, border: "1px solid #A9DFBF", background: "#EAFAF1", color: "#27AE60", cursor: "pointer", fontWeight: 600 }}>
+                      Accept
+                    </button>
+                    <button onClick={() => updateStatus.mutate({ id: item.id, status: "Rejected" })}
+                      style={{ fontSize: 12, padding: "5px 10px", borderRadius: 6, border: "1px solid #FECACA", background: "#FDEDEC", color: "#E74C3C", cursor: "pointer", fontWeight: 600 }}>
+                      Reject
+                    </button>
+                  </div>
+                )}
+                {item.status === "Requested" && (
+                  <button onClick={() => updateStatus.mutate({ id: item.id, status: "Received" })}
+                    style={{ fontSize: 12, padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer" }}>
+                    Mark Received
+                  </button>
+                )}
+                {item.status === "Accepted" && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#27AE60", fontWeight: 500 }}>
+                    <CheckCircle size={13} /> Accepted
+                  </span>
+                )}
+                {item.status === "Rejected" && (
+                  <button onClick={() => updateStatus.mutate({ id: item.id, status: "Received" })}
+                    style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-muted)", cursor: "pointer" }}>
+                    Re-open
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
         {!allItems.length && (
           <div style={{ padding: "50px 40px", textAlign: "center" }}>
             <FileCheck2 size={28} color="var(--border)" style={{ margin: "0 auto 12px" }} />
