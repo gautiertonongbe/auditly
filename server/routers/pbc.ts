@@ -96,6 +96,7 @@ export const pbcRouter = router({
       await ctx.db.update(pbcItems).set({
         annotations: input.annotations,
         annotatedImageUrl: url,
+        annotatedImageBase64: input.annotatedImageBase64,
         testAttributes: input.testAttributes,
       }).where(eq(pbcItems.id, input.pbcItemId));
 

@@ -454,6 +454,7 @@ export async function buildWorkbook(params: {
     fileName?: string | null;
     notes?: string | null;
     annotatedImageUrl?: string | null;
+    annotatedImageBase64?: string | null;
     annotations?: unknown | null;
     testAttributes?: unknown | null;
   }>;
@@ -757,7 +758,7 @@ export async function buildWorkbook(params: {
   }
 
   // ── Evidence / Annotated Screenshots ─────────────────────────────────────
-  const annotatedPbc = params.pbcItems.filter(p => p.annotatedImageUrl && p.status === "Accepted");
+  const annotatedPbc = params.pbcItems.filter(p => (p.annotatedImageBase64 || p.annotatedImageUrl) && p.status === "Accepted");
   if (annotatedPbc.length > 0) {
     const wsEvid = wb.addWorksheet("Evidence Screenshots");
     wsEvid.columns = [
@@ -809,9 +810,14 @@ export async function buildWorkbook(params: {
 
       // Embed annotated image
       try {
-        const imgResponse = await fetch(pbc.annotatedImageUrl!);
-        if (imgResponse.ok) {
-          const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+        let imgBuffer: Buffer | null = null;
+        if (pbc.annotatedImageBase64) {
+          imgBuffer = Buffer.from(pbc.annotatedImageBase64, "base64");
+        } else if (pbc.annotatedImageUrl) {
+          const imgResponse = await fetch(pbc.annotatedImageUrl);
+          if (imgResponse.ok) imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+        }
+        if (imgBuffer && imgBuffer.length > 100) {
           const imageId = wb.addImage({ buffer: imgBuffer, extension: "png" });
           wsEvid.addImage(imageId, {
             tl: { col: 0, row: evidRow - 1 },

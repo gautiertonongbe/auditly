@@ -109,6 +109,7 @@ export const pbcItems = mysqlTable("pbc_items", {
   aiClassification: text("ai_classification"),
   annotations: json("annotations"),
   annotatedImageUrl: text("annotated_image_url"),
+  annotatedImageBase64: text("annotated_image_base64"),
   testAttributes: json("test_attributes"),
   createdAt: datetime("created_at").notNull().$defaultFn(() => new Date()),
 });
