@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink, Mail, Send } from "lucide-react";
+import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink, Mail, Send, Paperclip, Download } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format, differenceInDays } from "date-fns";
 
@@ -457,7 +457,7 @@ export default function PbcTrackerPage() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "var(--surface-alt)" }}>
-              {["Control", "Description", "Due Date", "Received", "Status", "Action"].map(h => (
+              {["Control", "Description", "Due Date", "File", "Status", "Action"].map(h => (
                 <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>{h}</th>
               ))}
             </tr>
@@ -487,8 +487,28 @@ export default function PbcTrackerPage() {
                       </span>
                     ) : <span style={{ color: "var(--text-muted)" }}>—</span>}
                   </td>
-                  <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-muted)" }}>
-                    {item.receivedDate ? format(new Date(item.receivedDate), "MMM d, yyyy") : "—"}
+                  <td style={{ padding: "12px 16px" }}>
+                    {item.fileName ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Paperclip size={12} color="var(--accent)" />
+                        {item.fileUrl ? (
+                          <a href={item.fileUrl} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                            title={item.fileName}>
+                            {item.fileName}
+                            <Download size={11} style={{ flexShrink: 0 }} />
+                          </a>
+                        ) : (
+                          <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }} title={item.fileName}>
+                            {item.fileName}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "#CBD5E1", display: "flex", alignItems: "center", gap: 4 }}>
+                        <Upload size={11} /> No file
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: "12px 16px" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 600 }}>
