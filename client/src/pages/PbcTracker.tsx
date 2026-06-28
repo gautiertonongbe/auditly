@@ -403,10 +403,12 @@ export default function PbcTrackerPage() {
   const counts = (items ?? []).reduce<Record<string, number>>((acc, i) => { acc[i.status] = (acc[i.status] ?? 0) + 1; return acc; }, {});
   const overdue = (items ?? []).filter(i => i.dueDate && i.status === "Requested" && differenceInDays(new Date(), new Date(i.dueDate)) > 0).length;
 
+  const { data: exceptions } = trpc.exceptions.listByEngagement.useQuery({ engagementId });
+
   const clientName = engagement?.clientName ?? "Client";
   const engagementPeriod = engagement?.periodEnd ? format(new Date(engagement.periodEnd), "MMMM d, yyyy") : "";
   const controlsTested = (engagement?.controls ?? []).filter(c => c.status !== "NotStarted").length;
-  const exceptionsCount = 0; // pulled from exceptions router if needed
+  const exceptionsCount = exceptions?.length ?? 0;
 
   return (
     <div style={{ padding: 32 }}>

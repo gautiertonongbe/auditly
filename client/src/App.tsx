@@ -224,7 +224,7 @@ function Sidebar() {
 
       {/* Active engagement context pill */}
       {!collapsed && activeEngId && activeEng && (
-        <div style={{ margin: "10px 10px 0", padding: "8px 10px", borderRadius: 8, background: "var(--accent-light)", border: "1px solid rgba(37,99,235,0.12)", flexShrink: 0 }}>
+        <div style={{ margin: "10px 10px 0", padding: "8px 10px", borderRadius: 8, background: "var(--accent-light)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)", flexShrink: 0 }}>
           <div style={{ fontSize: 9, fontWeight: 600, color: "var(--accent)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 2 }}>Active Engagement</div>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeEng.clientName}</div>
           <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{activeEng.fiscalYear} · {activeEng.framework}</div>

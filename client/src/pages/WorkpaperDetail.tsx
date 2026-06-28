@@ -243,7 +243,7 @@ export default function WorkpaperDetailPage() {
               </div>
             )}
             {wp?.approvedAt && (
-              <div style={{ fontSize: 11, color: "#2E86DE", display: "flex", alignItems: "center", gap: 4 }}>
+              <div style={{ fontSize: 11, color: "var(--accent)", display: "flex", alignItems: "center", gap: 4 }}>
                 <CheckCircle size={11} /> Approved {format(new Date(wp.approvedAt), "MMM d")}
               </div>
             )}
