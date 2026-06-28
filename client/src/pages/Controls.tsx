@@ -507,20 +507,39 @@ export default function ControlsPage() {
       </div>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        {["all", "ITGC", "ITAC"].map(f => (
-          <button key={f} onClick={() => setFilter(f as "all" | "ITGC" | "ITAC")}
-            style={{ padding: "5px 14px", borderRadius: 20, border: "1px solid", fontSize: 12, fontWeight: 500, cursor: "pointer", background: filter === f ? "var(--navy)" : "var(--surface)", color: filter === f ? "#fff" : "var(--text)", borderColor: filter === f ? "var(--navy)" : "var(--border)" }}>
-            {f === "all" ? "All domains" : f}
-          </button>
-        ))}
-        <div style={{ width: 1, background: "var(--border)", margin: "0 4px" }} />
-        {["all", "NotStarted", "InProgress", "Complete", "Exception"].map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
-            style={{ padding: "5px 14px", borderRadius: 20, border: "1px solid", fontSize: 12, fontWeight: 500, cursor: "pointer", background: statusFilter === s ? "var(--navy)" : "var(--surface)", color: statusFilter === s ? "#fff" : "var(--text)", borderColor: statusFilter === s ? "var(--navy)" : "var(--border)" }}>
-            {s === "all" ? "All statuses" : STATUS_COLORS[s]?.label ?? s}
-          </button>
-        ))}
+      <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "12px 16px", marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", width: 56, flexShrink: 0 }}>Domain</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            {(["all", "ITGC", "ITAC"] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                style={{ padding: "4px 14px", borderRadius: 6, border: "1px solid", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.12s",
+                  background: filter === f ? "var(--navy)" : "transparent",
+                  color: filter === f ? "#fff" : "var(--text-muted)",
+                  borderColor: filter === f ? "var(--navy)" : "var(--border)" }}>
+                {f === "all" ? "All" : f}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", width: 56, flexShrink: 0 }}>Status</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {(["all", "NotStarted", "InProgress", "UnderReview", "Complete", "Exception"] as const).map(s => {
+              const sc = STATUS_COLORS[s];
+              const active = statusFilter === s;
+              return (
+                <button key={s} onClick={() => setStatusFilter(s)}
+                  style={{ padding: "4px 14px", borderRadius: 6, border: "1px solid", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.12s",
+                    background: active ? (s === "all" ? "var(--navy)" : sc?.bg ?? "#F8FAFC") : "transparent",
+                    color: active ? (s === "all" ? "#fff" : sc?.color ?? "var(--text)") : "var(--text-muted)",
+                    borderColor: active ? (s === "all" ? "var(--navy)" : sc?.color ?? "var(--border)") : "var(--border)" }}>
+                  {s === "all" ? "All" : sc?.label ?? s}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Group by type */}
@@ -531,10 +550,11 @@ export default function ControlsPage() {
         const dc = DOMAIN_COLORS[type] ?? DOMAIN_COLORS.CM;
         return (
           <div key={type} style={{ marginBottom: 24 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <span style={{ padding: "3px 10px", borderRadius: 6, background: dc.bg, color: dc.color, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em" }}>{type}</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)" }}>{typeLabel[type]}</span>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>({group.length})</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ padding: "3px 9px", borderRadius: 5, background: dc.bg, color: dc.color, fontSize: 10, fontWeight: 800, letterSpacing: "0.07em" }}>{type}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>{typeLabel[type]}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", background: "#F1F5F9", padding: "1px 7px", borderRadius: 10 }}>{group.length}</span>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {group.map(ctrl => {
@@ -548,7 +568,7 @@ export default function ControlsPage() {
                         <span style={{ fontSize: 10, fontWeight: 800, color: dc.color }}>{ctrl.controlRef}</span>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", marginBottom: 2 }}>{ctrl.controlRef} — {ctrl.objective.slice(0, 80)}{ctrl.objective.length > 80 ? "..." : ""}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", marginBottom: 2 }}>{ctrl.objective.slice(0, 90)}{ctrl.objective.length > 90 ? "..." : ""}</div>
                         <div style={{ display: "flex", gap: 10, fontSize: 11, color: "var(--text-muted)" }}>
                           <span>{ctrl.frequency}</span>
                           <span style={{ color: RISK_COLORS[ctrl.riskLevel] ?? "#888", fontWeight: 600 }}>{ctrl.riskLevel} risk</span>

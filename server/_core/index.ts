@@ -866,6 +866,79 @@ void (async () => {
   } catch (e) {
     console.warn("[Seed] Could not seed workpapers/exceptions/SOD data:", e);
   }
+
+  // ── Seed PBC items for Acme Corp independently (runs even if workpapers already existed) ──
+  try {
+    const [acmeEngForPbc] = await db.select({ id: engagements.id }).from(engagements)
+      .where(eq(engagements.clientName, "Acme Corp")).limit(1);
+    if (acmeEngForPbc) {
+      const existingPbc = await db.select({ id: pbcItems.id }).from(pbcItems)
+        .where(eq(pbcItems.engagementId, acmeEngForPbc.id)).limit(1);
+      if (existingPbc.length === 0) {
+        const ctlRowsPbc = await db.select({ id: controls.id, controlRef: controls.controlRef })
+          .from(controls).where(eq(controls.engagementId, acmeEngForPbc.id));
+        const cm: Record<string, string> = {};
+        for (const c of ctlRowsPbc) cm[c.controlRef] = c.id;
+        const engId = acmeEngForPbc.id;
+        const today = new Date();
+        const due1 = new Date("2024-10-15");
+        const due2 = new Date("2024-10-22");
+        const due3 = new Date("2024-11-01");
+        await db.insert(pbcItems).values([
+          { id: randomUUID(), engagementId: engId, controlId: cm["AM-01"] ?? null,
+            description: "Active SAP user list as of 12/31/2024 (SUIM export: username, role, last login, department)",
+            requestedDate: today, dueDate: due1, receivedDate: new Date("2024-10-12"),
+            status: "Accepted" as const, fileName: "SAP_Active_Users_20241231.xlsx", isIpe: true, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["AM-01"] ?? null,
+            description: "User provisioning log for FY2024 — all new access granted with approval documentation",
+            requestedDate: today, dueDate: due1, receivedDate: new Date("2024-10-14"),
+            status: "Received" as const, isIpe: true, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["AM-04"] ?? null,
+            description: "Terminated employee list from HR for FY2024 with termination dates",
+            requestedDate: today, dueDate: due1, status: "Requested" as const, isIpe: false, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["CM-01"] ?? null,
+            description: "Complete change ticket log from ServiceNow for FY2024 (all change requests, approvals, implementations)",
+            requestedDate: today, dueDate: due2, receivedDate: new Date("2024-10-20"),
+            status: "Accepted" as const, fileName: "ServiceNow_Changes_FY2024.xlsx", isIpe: true, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["CM-01"] ?? null,
+            description: "25 sample change tickets with approval emails and UAT sign-off documentation",
+            requestedDate: today, dueDate: due2, status: "Requested" as const, isIpe: false, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["CM-03"] ?? null,
+            description: "Emergency change log for FY2024 with post-implementation approval documentation",
+            requestedDate: today, dueDate: due2, receivedDate: new Date("2024-10-19"),
+            status: "Accepted" as const, isIpe: false, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["CO-01"] ?? null,
+            description: "AWS CloudWatch batch job completion logs for FY2024 (daily runs with success/failure status)",
+            requestedDate: today, dueDate: due3, receivedDate: new Date("2024-10-28"),
+            status: "Accepted" as const, fileName: "CloudWatch_BatchJobs_FY2024.csv", isIpe: true, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["CO-01"] ?? null,
+            description: "Backup restore test documentation — most recent test with results and sign-off",
+            requestedDate: today, dueDate: due3, status: "Requested" as const, isIpe: false, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["AC-PR-01"] ?? null,
+            description: "Population of 4,217 AP invoices processed in SAP FY2024 (invoice number, vendor, amount, date, match result)",
+            requestedDate: today, dueDate: due3, receivedDate: new Date("2024-11-01"),
+            status: "Accepted" as const, fileName: "SAP_AP_Invoices_FY2024.xlsx", isIpe: true, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["AC-IN-01"] ?? null,
+            description: "SAP input validation configuration screenshots showing edit checks and mandatory field rules",
+            requestedDate: today, dueDate: due3, receivedDate: new Date("2024-10-30"),
+            status: "Accepted" as const, isIpe: false, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["AC-IN-01"] ?? null,
+            description: "Error / rejected transaction log for FY2024 showing SAP validation failures and resolutions",
+            requestedDate: today, dueDate: due3, status: "Requested" as const, isIpe: true, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["AC-IF-01"] ?? null,
+            description: "Interface monitoring log for FY2024 (record counts, timestamps, success/failure per run)",
+            requestedDate: today, dueDate: due2, receivedDate: new Date("2024-10-25"),
+            status: "Rejected" as const, rejectionReason: "Incomplete — missing Q4 data. Please re-export to include full fiscal year.", isIpe: true, createdAt: today },
+          { id: randomUUID(), engagementId: engId, controlId: cm["AC-IF-01"] ?? null,
+            description: "Reconciliation of records transmitted vs. received by destination system (counts and amounts)",
+            requestedDate: today, dueDate: due3, status: "Requested" as const, isIpe: true, createdAt: today },
+        ]);
+        console.log("[Seed] Created 13 PBC items for Acme Corp FY2024");
+      }
+    }
+  } catch (e) {
+    console.warn("[Seed] Could not seed Acme Corp PBC items:", e);
+  }
 })();
 
 // ── Health check ────────────────────────────────────────────────────────────

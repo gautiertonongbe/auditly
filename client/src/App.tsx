@@ -12,6 +12,7 @@ import { trpc } from "./lib/trpc";
 import EngagementsPage from "./pages/Engagements";
 import EngagementDetailPage from "./pages/EngagementDetail";
 import ControlsPage from "./pages/Controls";
+import WorkpapersPage from "./pages/Workpapers";
 import WorkpaperDetailPage from "./pages/WorkpaperDetail";
 import PbcTrackerPage from "./pages/PbcTracker";
 import IpeRegisterPage from "./pages/IpeRegister";
@@ -972,70 +973,94 @@ function NoEngagementPage({ pathKey }: { pathKey: string }) {
   const cfg = PAGE_LABELS[pathKey] ?? { label: pathKey, icon: LayoutDashboard, description: "Select an engagement to access this section." };
   const Icon = cfg.icon;
   const { data: engagements } = trpc.engagements.list.useQuery();
-  const recent = engagements?.slice(0, 5) ?? [];
+  const all = engagements ?? [];
+
+  const STATUS_C: Record<string, { label: string; color: string; bg: string }> = {
+    planning:  { label: "Planning",  color: "#2563EB", bg: "#EFF6FF" },
+    fieldwork: { label: "Fieldwork", color: "#D97706", bg: "#FFF7ED" },
+    review:    { label: "Review",    color: "#7C3AED", bg: "#F5F3FF" },
+    complete:  { label: "Complete",  color: "#059669", bg: "#ECFDF5" },
+  };
 
   return (
-    <div style={{ padding: "48px 40px", maxWidth: 680, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 40 }}>
-        <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-          <Icon size={28} color="var(--accent)" strokeWidth={1.6} />
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 8px" }}>{cfg.label}</h1>
-        <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0, maxWidth: 420, lineHeight: 1.6 }}>{cfg.description}</p>
-      </div>
-
-      {/* Info banner */}
-      <div style={{ background: "#F0F7FF", border: "1px solid #C3DDF7", borderRadius: 12, padding: "16px 20px", marginBottom: 32, display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <Briefcase size={16} color="#2563EB" style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#1E3A5F", marginBottom: 3 }}>Engagement required</div>
-          <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.55 }}>
-            {cfg.label} is scoped to a specific engagement. Select one below or open an existing engagement to continue.
+    <div style={{ padding: "32px 32px 48px" }}>
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon size={18} color="var(--accent)" strokeWidth={1.8} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-strong)", margin: 0 }}>{cfg.label}</h1>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, marginTop: 1 }}>{cfg.description}</p>
           </div>
         </div>
+        <Link href="/engagements">
+          <a style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "var(--accent)", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+            <Briefcase size={13} /> All Engagements
+          </a>
+        </Link>
       </div>
 
-      {/* Recent engagements */}
-      {recent.length > 0 && (
-        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 24 }}>
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Recent Engagements
+      {/* Slim inline notice */}
+      <div style={{ background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
+        <Briefcase size={14} color="#2563EB" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: "#1E40AF" }}>
+          Select an engagement below to open <strong>{cfg.label}</strong> for that client.
+        </span>
+      </div>
+
+      {/* Engagements table */}
+      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>Engagements</span>
+          {all.length > 0 && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{all.length} total</span>}
+        </div>
+
+        {all.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 80px 110px 36px", padding: "8px 20px", background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
+            {["Client", "Framework", "Year", "Status", ""].map(h => (
+              <span key={h} style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</span>
+            ))}
           </div>
-          {recent.map(eng => {
-            const sc = { planning: "#2563EB", fieldwork: "#D97706", review: "#7C3AED", complete: "#059669" }[(eng.status ?? "planning")] ?? "#94A3B8";
+        )}
+
+        {all.length === 0 ? (
+          <div style={{ padding: "48px 0", textAlign: "center" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 11, background: "#F8FAFC", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+              <Briefcase size={20} color="#CBD5E1" />
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-strong)", marginBottom: 4 }}>No engagements yet</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>Create your first engagement to get started.</div>
+            <Link href="/engagements"><a style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "var(--accent)", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none" }}><Briefcase size={13} /> New Engagement</a></Link>
+          </div>
+        ) : (
+          all.map((eng, i) => {
+            const s = STATUS_C[eng.status] ?? { label: eng.status, color: "#64748B", bg: "#F8FAFC" };
             return (
               <Link key={eng.id} href={`/engagements/${eng.id}/${pathKey}`}>
-                <a style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--border)", textDecoration: "none", transition: "background 0.1s" }}
+                <a style={{ display: "grid", gridTemplateColumns: "1fr 120px 80px 110px 36px", alignItems: "center", padding: "13px 20px", borderBottom: i < all.length - 1 ? "1px solid var(--border)" : "none", textDecoration: "none", transition: "background 0.1s" }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#F8FAFC"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <Briefcase size={15} color="var(--accent)" />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)" }}>{eng.clientName}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{eng.fiscalYear} · {eng.framework} · {eng.clientIndustry}</div>
-                    </div>
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)" }}>{eng.clientName}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{eng.clientIndustry}</div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: sc, background: sc + "18", padding: "3px 10px", borderRadius: 20, textTransform: "capitalize" }}>
-                      {eng.status}
-                    </span>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{eng.framework}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{eng.fiscalYear}</div>
+                  <div>
+                    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: s.bg, color: s.color, fontWeight: 600 }}>{s.label}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
                     <ChevronRight size={14} color="#CBD5E1" />
                   </div>
                 </a>
               </Link>
             );
-          })}
-        </div>
-      )}
-
-      <Link href="/engagements">
-        <a style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 20px", background: "var(--accent)", color: "#fff", borderRadius: 9, fontSize: 13, fontWeight: 600, textDecoration: "none", boxShadow: "0 2px 8px rgba(37,99,235,0.2)" }}>
-          <Briefcase size={14} /> Browse all engagements
-        </a>
-      </Link>
+          })
+        )}
+      </div>
     </div>
   );
 }
@@ -1052,6 +1077,7 @@ function AppInner() {
         <Route path="/engagements/:id" component={EngagementDetailPage} />
         {/* Per-engagement sub-pages */}
         <Route path="/engagements/:id/controls" component={ControlsPage} />
+        <Route path="/engagements/:id/workpapers" component={WorkpapersPage} />
         <Route path="/engagements/:engId/controls/:controlId" component={WorkpaperDetailPage} />
         <Route path="/engagements/:id/pbc" component={PbcTrackerPage} />
         <Route path="/engagements/:id/ipe" component={IpeRegisterPage} />
