@@ -89,7 +89,7 @@ export default function WorkpapersPage() {
       {/* KPI strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         {[
-          { label: "Total Controls",  value: total,          color: "#2563EB" },
+          { label: "Total Controls",  value: total,          color: "var(--accent)" },
           { label: "Signed Off",      value: signed,         color: "#059669" },
           { label: "Review Complete", value: reviewComplete, color: "#7C3AED" },
           { label: "Exceptions",      value: exceptions,     color: "#DC2626" },

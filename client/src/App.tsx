@@ -559,14 +559,14 @@ function Layout({ children }: { children: React.ReactNode }) {
 // ── Pages (stubs — each will be a full component) ───────────────────────────
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  planning:  { bg: "#EFF6FF", text: "#2563EB", label: "Planning" },
+  planning:  { bg: "var(--accent-light)", text: "var(--accent)", label: "Planning" },
   fieldwork: { bg: "#FFF7ED", text: "#D97706", label: "Fieldwork" },
   review:    { bg: "#F5F3FF", text: "#7C3AED", label: "Review" },
   complete:  { bg: "#ECFDF5", text: "#059669", label: "Complete" },
 };
 
 const QUICK_ACTIONS = [
-  { label: "New Engagement", icon: Briefcase, href: "/engagements", color: "#2563EB", bg: "#EFF6FF" },
+  { label: "New Engagement", icon: Briefcase, href: "/engagements", color: "var(--accent)", bg: "var(--accent-light)" },
   { label: "Controls", icon: ClipboardList, href: "/engagements", color: "#7C3AED", bg: "#F5F3FF" },
   { label: "Workpapers", icon: FileText, href: "/engagements", color: "#0891B2", bg: "#CFFAFE" },
   { label: "Approvals", icon: CheckSquare, href: "/engagements", color: "#059669", bg: "#ECFDF5" },
@@ -581,7 +581,7 @@ function Dashboard() {
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   const kpis = [
-    { label: "Total Engagements", value: String(engagements?.length ?? 0), sub: "all time", icon: Briefcase, color: "#2563EB", bg: "#EFF6FF" },
+    { label: "Total Engagements", value: String(engagements?.length ?? 0), sub: "all time", icon: Briefcase, color: "var(--accent)", bg: "var(--accent-light)" },
     { label: "Active", value: String(active.length), sub: "fieldwork + review", icon: TrendingUp, color: "#0891B2", bg: "#CFFAFE" },
     { label: "Completed", value: String(complete), sub: "this year", icon: CheckSquare, color: "#059669", bg: "#ECFDF5" },
     { label: "Pending Review", value: String(engagements?.filter(e => e.status === "review").length ?? 0), sub: "need attention", icon: Clock, color: "#7C3AED", bg: "#F5F3FF" },
@@ -824,7 +824,7 @@ function LoginPage() {
       <LoginLeftPanel />
       <LoginFormPanel>
         <div style={{ marginBottom: 40 }}>
-          <div style={{ width: 36, height: 3, background: "linear-gradient(90deg, #1E3A5F, #2563EB)", borderRadius: 2, marginBottom: 20 }} />
+          <div style={{ width: 36, height: 3, background: "linear-gradient(90deg, #1E3A5F, var(--accent))", borderRadius: 2, marginBottom: 20 }} />
           <h2 style={{ fontSize: 30, fontWeight: 700, color: "#0F172A", margin: "0 0 10px", letterSpacing: "-0.6px", lineHeight: 1.2 }}>Two-Factor Auth</h2>
           <p style={{ fontSize: 14, color: "#64748B", margin: 0, lineHeight: 1.6 }}>Enter the 6-digit code from your authenticator app.</p>
         </div>
@@ -846,7 +846,7 @@ function LoginPage() {
         </button>
         <p style={{ textAlign: "center", fontSize: 12, color: "#94A3B8", marginTop: 20 }}>
           Lost access?{" "}
-          <button onClick={() => setMfaStep(false)} style={{ background: "none", border: "none", color: "#2563EB", cursor: "pointer", fontSize: 12, padding: 0, fontWeight: 600 }}>Go back</button>
+          <button onClick={() => setMfaStep(false)} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, padding: 0, fontWeight: 600 }}>Go back</button>
         </p>
       </LoginFormPanel>
     </div>
@@ -857,7 +857,7 @@ function LoginPage() {
       <LoginLeftPanel />
       <LoginFormPanel>
         <div style={{ marginBottom: 40 }}>
-          <div style={{ width: 36, height: 3, background: "linear-gradient(90deg, #1E3A5F, #2563EB)", borderRadius: 2, marginBottom: 20 }} />
+          <div style={{ width: 36, height: 3, background: "linear-gradient(90deg, #1E3A5F, var(--accent))", borderRadius: 2, marginBottom: 20 }} />
           <h2 style={{ fontSize: 30, fontWeight: 700, color: "#0F172A", margin: "0 0 10px", letterSpacing: "-0.6px", lineHeight: 1.2 }}>Welcome back</h2>
           <p style={{ fontSize: 14, color: "#64748B", margin: 0, lineHeight: 1.6 }}>Sign in to your Auditly workspace to continue your audit engagements.</p>
         </div>
@@ -976,7 +976,7 @@ function NoEngagementPage({ pathKey }: { pathKey: string }) {
   const all = engagements ?? [];
 
   const STATUS_C: Record<string, { label: string; color: string; bg: string }> = {
-    planning:  { label: "Planning",  color: "#2563EB", bg: "#EFF6FF" },
+    planning:  { label: "Planning",  color: "var(--accent)", bg: "var(--accent-light)" },
     fieldwork: { label: "Fieldwork", color: "#D97706", bg: "#FFF7ED" },
     review:    { label: "Review",    color: "#7C3AED", bg: "#F5F3FF" },
     complete:  { label: "Complete",  color: "#059669", bg: "#ECFDF5" },
@@ -1003,9 +1003,9 @@ function NoEngagementPage({ pathKey }: { pathKey: string }) {
       </div>
 
       {/* Slim inline notice */}
-      <div style={{ background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
-        <Briefcase size={14} color="#2563EB" style={{ flexShrink: 0 }} />
-        <span style={{ fontSize: 13, color: "#1E40AF" }}>
+      <div style={{ background: "var(--accent-light)", border: "1px solid var(--accent)", borderRadius: 8, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10, opacity: 0.9 }}>
+        <Briefcase size={14} color="var(--accent)" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: "var(--accent)" }}>
           Select an engagement below to open <strong>{cfg.label}</strong> for that client.
         </span>
       </div>

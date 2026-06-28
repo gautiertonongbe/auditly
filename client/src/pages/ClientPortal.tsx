@@ -245,7 +245,7 @@ export default function ClientPortalPage() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", lineHeight: 1.4 }}>{item.description}</div>
                             <div style={{ display: "flex", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
-                              {item.isIpe && <span style={{ fontSize: 11, background: "#EFF6FF", color: "#3B82F6", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>IPE</span>}
+                              {item.isIpe && <span style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>IPE</span>}
                               {item.dueDate && (
                                 <span style={{ fontSize: 11, color: new Date(item.dueDate) < new Date() ? "#E74C3C" : "#6B7280" }}>
                                   Due {new Date(item.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
