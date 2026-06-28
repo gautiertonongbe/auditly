@@ -37,6 +37,58 @@ function mergeRange(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c
   ws.mergeCells(r1, c1, r2, c2);
 }
 
+// Standard Big 4 print setup applied to every sheet
+function applyPrintSetup(ws: ExcelJS.Worksheet, opts: {
+  clientName: string;
+  freezeRow?: number;   // row to freeze below (e.g. 4 = freeze rows 1-4)
+  freezeCol?: number;   // col to freeze right of
+  filterRow?: number;   // row to place autofilter
+  landscape?: boolean;
+  tabColor?: string;
+}) {
+  // Freeze panes
+  if (opts.freezeRow || opts.freezeCol) {
+    ws.views = [{
+      state: "frozen",
+      ySplit: opts.freezeRow ?? 0,
+      xSplit: opts.freezeCol ?? 0,
+      topLeftCell: opts.freezeRow || opts.freezeCol
+        ? `${opts.freezeCol ? String.fromCharCode(65 + (opts.freezeCol)) : "A"}${(opts.freezeRow ?? 0) + 1}`
+        : "A1",
+      activeCell: "A1",
+    }];
+  }
+
+  // Print page setup
+  ws.pageSetup = {
+    orientation: opts.landscape !== false ? "landscape" : "portrait",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 },
+    paperSize: 9, // A4
+    printTitlesRow: opts.freezeRow ? `1:${opts.freezeRow}` : undefined,
+  };
+
+  // Print header/footer
+  ws.headerFooter = {
+    oddHeader: `&L&"Arial,Bold"&9${opts.clientName}  —  CONFIDENTIAL&C&"Arial,Bold"&9AUDITLY AUDIT WORKPAPER&R&"Arial,Regular"&9${ws.name}`,
+    oddFooter: `&L&"Arial,Regular"&8FOR AUDIT USE ONLY  |  Prepared with Auditly&C&"Arial,Regular"&8Page &P of &N&R&"Arial,Regular"&8&D`,
+  };
+
+  // Autofilter
+  if (opts.filterRow) {
+    const lastCol = ws.columnCount || 12;
+    const endCol = String.fromCharCode(64 + lastCol);
+    ws.autoFilter = `A${opts.filterRow}:${endCol}${opts.filterRow}`;
+  }
+
+  // Tab color
+  if (opts.tabColor) {
+    ws.properties = { ...ws.properties, tabColor: { argb: opts.tabColor } };
+  }
+}
+
 // Big 4 professional header block (rows 1-6)
 function applyWorkpaperHeader(ws: ExcelJS.Worksheet, opts: {
   clientName: string;
@@ -61,7 +113,7 @@ function applyWorkpaperHeader(ws: ExcelJS.Worksheet, opts: {
   ws.getRow(1).height = 26;
   const r1 = ws.getRow(1);
   r1.getCell(1).value = `AUDITLY AUDIT WORKPAPER  |  ${opts.pageTitle}`;
-  r1.getCell(1).font = { bold: true, size: 13, color: { argb: COLORS.white }, name: "Arial" };
+  r1.getCell(1).font = { bold: true, size: 12, color: { argb: COLORS.white }, name: "Calibri" };
   r1.getCell(1).fill = cellFill(COLORS.navyHeader);
   r1.getCell(1).alignment = { horizontal: "left", vertical: "middle", indent: 1 };
   mergeRange(ws, 1, 1, 1, nc);
@@ -86,7 +138,7 @@ function applyWorkpaperHeader(ws: ExcelJS.Worksheet, opts: {
     lc.border = thinBorder();
     const vc = ws.getRow(2).getCell(col + 1);
     vc.value = val;
-    vc.font = { size: 9, name: "Arial" };
+    vc.font = { size: 10, name: "Calibri" };
     vc.border = thinBorder();
     vc.alignment = { vertical: "middle" };
     col += 2;
@@ -106,7 +158,7 @@ function applyWorkpaperHeader(ws: ExcelJS.Worksheet, opts: {
     const end = col + colsPerBlock - 1;
     const cell = ws.getRow(3).getCell(col);
     cell.value = `${so.lbl}: ${so.name}${so.date ? `  |  ${so.date}` : ""}`;
-    cell.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+    cell.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
     cell.fill = cellFill(so.color);
     cell.alignment = { horizontal: "center", vertical: "middle" };
     cell.border = thinBorder();
@@ -126,7 +178,7 @@ function applySection(ws: ExcelJS.Worksheet, rowNum: number, title: string, cont
   const titleRow = ws.getRow(rowNum);
   const tc = titleRow.getCell(1);
   tc.value = title.toUpperCase();
-  tc.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+  tc.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
   tc.fill = cellFill(COLORS.navyLight);
   tc.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
   tc.border = thinBorder();
@@ -136,7 +188,7 @@ function applySection(ws: ExcelJS.Worksheet, rowNum: number, title: string, cont
   const contentRow = ws.getRow(rowNum + 1);
   contentRow.getCell(1).value = content;
   contentRow.getCell(1).alignment = { wrapText: true, vertical: "top", indent: 1 };
-  contentRow.getCell(1).font = { size: 9, name: "Arial" };
+  contentRow.getCell(1).font = { size: 10, name: "Calibri" };
   contentRow.getCell(1).border = thinBorder();
   contentRow.height = Math.max(30, lines.length * 14 + 6);
   mergeRange(ws, rowNum + 1, 1, rowNum + 1, numCols);
@@ -201,212 +253,6 @@ const GTEST_COLUMNS: Record<string, { key: string; label: string; width: number 
     { key: "auditorNotes",   label: "Auditor Notes / Exception Detail",  width: 38 },
   ],
 };
-
-function buildGTestSheet(wb: ExcelJS.Workbook, params: {
-  controlRef: string;
-  controlType: string;
-  controlObjective: string;
-  frequency: string;
-  riskLevel: string;
-  clientName: string;
-  period: string;
-  preparedBy: string;
-  preparedDate: string;
-  reviewedBy: string;
-  reviewedDate: string;
-  approvedBy?: string;
-  approvedDate?: string;
-  populationCount: number;
-  populationDescription: string;
-  sampleSize: number;
-  testDetail: TestDetailResult;
-}) {
-  const columns = GTEST_COLUMNS[params.controlType] ?? GTEST_COLUMNS.CM;
-  const nc = columns.length;
-  const sheetName = `${params.controlRef} GTest`.slice(0, 31);
-  const ws = wb.addWorksheet(sheetName);
-
-  // Set column widths
-  ws.columns = columns.map(c => ({ key: c.key, width: c.width }));
-
-  // Header block (rows 1-4)
-  applyWorkpaperHeader(ws, {
-    clientName: params.clientName,
-    engagementName: `SOX ${params.controlType} Testing`,
-    period: params.period,
-    controlRef: params.controlRef,
-    controlType: params.controlType,
-    riskLevel: params.riskLevel,
-    frequency: params.frequency,
-    preparedBy: params.preparedBy,
-    preparedDate: params.preparedDate,
-    reviewedBy: params.reviewedBy,
-    reviewedDate: params.reviewedDate,
-    approvedBy: params.approvedBy,
-    approvedDate: params.approvedDate,
-    pageTitle: `GENERAL TEST OF CONTROLS — ${params.controlType}`,
-    numCols: nc,
-  });
-
-  let row = 5;
-
-  // Control objective
-  row = applySection(ws, row, "CONTROL OBJECTIVE", params.controlObjective, nc);
-
-  // Population & sampling row
-  const popText = `POPULATION: ${params.populationDescription} — ${params.populationCount} total items for the period.\n` +
-    `SAMPLE: ${params.sampleSize} items selected using PCAOB AS 2315 haphazard random sampling.\n` +
-    (params.testDetail.populationNote ? `NOTE: ${params.testDetail.populationNote}` : "");
-  row = applySection(ws, row, "POPULATION & SAMPLING", popText, nc);
-
-  // ── GTest column headers ──────────────────────────────────────────────────
-  const headerRow = ws.getRow(row);
-  headerRow.height = 40;
-  columns.forEach((col, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = col.label;
-    cell.font = { bold: true, size: 8, color: { argb: COLORS.white }, name: "Arial" };
-    cell.fill = cellFill(COLORS.navyHeader);
-    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-    cell.border = thinBorder();
-  });
-  row++;
-
-  // ── Test detail rows ──────────────────────────────────────────────────────
-  const attributeKeys = columns.map(c => c.key).filter(k => !["itemNo", "ticketRef", "description", "result", "auditorNotes"].includes(k));
-
-  for (const item of params.testDetail.rows) {
-    const dataRow = ws.getRow(row);
-    dataRow.height = 18;
-    const isException = item.overallResult === "Exception";
-    const rowBg = isException ? COLORS.redLight : (row % 2 === 0 ? COLORS.greyLight : COLORS.white);
-
-    columns.forEach((col, i) => {
-      const cell = dataRow.getCell(i + 1);
-      let value: string | number = "";
-      const attr = item.attributes?.[col.key];
-
-      if (col.key === "itemNo")       value = item.itemNo;
-      else if (col.key === "ticketRef") value = item.ticketRef ?? "";
-      else if (col.key === "description") value = item.description ?? "";
-      else if (col.key === "result")    value = item.overallResult ?? "";
-      else if (col.key === "auditorNotes") value = item.auditorNotes ?? "";
-      else if (attr) {
-        // Show tickmark + note
-        value = attr.tickmark && attr.result !== "N/A"
-          ? (attr.result === "Exception" ? `! ${attr.note || "Exception"}` : attr.tickmark)
-          : (attr.result === "N/A" ? "N/A" : attr.tickmark || attr.result);
-      }
-
-      cell.value = value;
-      cell.font = {
-        size: 9,
-        name: "Arial",
-        bold: col.key === "result" || col.key === "itemNo",
-        color: {
-          argb: col.key === "result"
-            ? (item.overallResult === "Pass" ? COLORS.green : COLORS.red)
-            : (attr?.result === "Exception" ? COLORS.red : COLORS.navyHeader),
-        },
-      };
-      cell.fill = cellFill(rowBg);
-      cell.alignment = { horizontal: col.key === "auditorNotes" || col.key === "description" ? "left" : "center", vertical: "middle", wrapText: true };
-      cell.border = thinBorder();
-    });
-    row++;
-  }
-
-  // Exception count summary row
-  const exceptionCount = params.testDetail.rows.filter(r => r.overallResult === "Exception").length;
-  const totalTested = params.testDetail.rows.length;
-
-  ws.getRow(row).height = 14;
-  const summaryCell = ws.getRow(row).getCell(1);
-  summaryCell.value = `TOTAL ITEMS TESTED: ${totalTested}  |  EXCEPTIONS: ${exceptionCount}  |  EXCEPTION RATE: ${params.testDetail.exceptionRate}`;
-  summaryCell.font = { bold: true, size: 9, name: "Arial", color: { argb: exceptionCount > 0 ? COLORS.red : COLORS.green } };
-  summaryCell.fill = cellFill(exceptionCount > 0 ? COLORS.redLight : COLORS.greenLight);
-  summaryCell.border = thinBorder();
-  mergeRange(ws, row, 1, row, nc);
-  row++;
-
-  // ── Exception detail block ────────────────────────────────────────────────
-  if (params.testDetail.exceptionSummary) {
-    row++;
-    row = applySection(ws, row, "EXCEPTIONS NOTED", params.testDetail.exceptionSummary, nc);
-  }
-
-  // ── Conclusion (Manager draft) ────────────────────────────────────────────
-  row++;
-  const conclusionLabel = ws.getRow(row);
-  conclusionLabel.getCell(1).value = "CONCLUSION (DRAFT — PREPARED BY MANAGER)";
-  conclusionLabel.getCell(1).font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
-  conclusionLabel.getCell(1).fill = cellFill(exceptionCount > 0 ? COLORS.red : COLORS.green);
-  conclusionLabel.getCell(1).border = thinBorder();
-  conclusionLabel.height = 14;
-  mergeRange(ws, row, 1, row, nc);
-  row++;
-
-  const conclusionText = ws.getRow(row);
-  conclusionText.getCell(1).value = params.testDetail.managerDraftConclusion;
-  conclusionText.getCell(1).font = { size: 9, name: "Arial", italic: false };
-  conclusionText.getCell(1).alignment = { wrapText: true, vertical: "top", indent: 1 };
-  conclusionText.getCell(1).fill = cellFill(exceptionCount > 0 ? COLORS.redLight : COLORS.greenLight);
-  conclusionText.getCell(1).border = thinBorder();
-  conclusionText.height = 45;
-  mergeRange(ws, row, 1, row, nc);
-  row++;
-
-  // ── Reviewer notes (Director concurrence) ────────────────────────────────
-  row++;
-  const reviewLabel = ws.getRow(row);
-  reviewLabel.getCell(1).value = "REVIEWER NOTES (DIRECTOR / PARTNER CONCURRENCE)";
-  reviewLabel.getCell(1).font = { bold: true, size: 9, color: { argb: "4A1777" }, name: "Arial" };
-  reviewLabel.getCell(1).fill = cellFill(COLORS.reviewBg);
-  reviewLabel.getCell(1).border = thinBorder();
-  reviewLabel.height = 14;
-  mergeRange(ws, row, 1, row, nc);
-  row++;
-
-  const reviewText = ws.getRow(row);
-  reviewText.getCell(1).value = params.testDetail.reviewerComments
-    || `Reviewed and concur with manager assessment of ${params.controlRef}. Testing appears adequate and complete per PCAOB AS 2201 and AS 2315.`;
-  reviewText.getCell(1).font = { size: 9, name: "Arial", italic: true };
-  reviewText.getCell(1).alignment = { wrapText: true, vertical: "top", indent: 1 };
-  reviewText.getCell(1).fill = cellFill(COLORS.directorBg);
-  reviewText.getCell(1).border = thinBorder();
-  reviewText.height = 40;
-  mergeRange(ws, row, 1, row, nc);
-  row++;
-
-  // ── Tickmark legend (bottom of sheet) ────────────────────────────────────
-  row += 2;
-  const tickLabel = ws.getRow(row);
-  tickLabel.getCell(1).value = "TICKMARK LEGEND";
-  tickLabel.getCell(1).font = { bold: true, size: 8, color: { argb: COLORS.grey }, name: "Arial" };
-  tickLabel.getCell(1).fill = cellFill(COLORS.greyLight);
-  tickLabel.getCell(1).border = thinBorder();
-  mergeRange(ws, row, 1, row, nc);
-  row++;
-
-  const tickmarks = [
-    ["^", "Agreed to source system or population report"],
-    ["*", "Agreed to approved documentation / evidence on file"],
-    ["#", "Independently reperformed or recalculated by auditor"],
-    ["!", "Exception noted — cross-reference to Exception Log"],
-    ["N/A", "Not applicable to this sample item"],
-  ];
-  for (const [tick, desc] of tickmarks) {
-    const tRow = ws.getRow(row);
-    tRow.getCell(1).value = tick;
-    tRow.getCell(1).font = { bold: true, size: 8, color: { argb: COLORS.navyHeader }, name: "Arial" };
-    tRow.getCell(1).border = thinBorder();
-    tRow.getCell(2).value = desc;
-    tRow.getCell(2).font = { size: 8, name: "Arial" };
-    tRow.getCell(2).border = thinBorder();
-    mergeRange(ws, row, 2, row, nc);
-    row++;
-  }
-}
 
 // ── Main workbook builder ─────────────────────────────────────────────────────
 
@@ -498,11 +344,12 @@ export async function buildWorkbook(params: {
     { key: "gtest",     width: 14 },
   ];
   wsIndex.columns = idxCols;
+  applyPrintSetup(wsIndex, { clientName: params.engagement.clientName, freezeRow: 4, filterRow: 4, tabColor: COLORS.navyHeader });
 
   // Cover banner
   wsIndex.getRow(1).height = 32;
   wsIndex.getRow(1).getCell(1).value = `SOX AUDIT WORKPAPER — ${params.engagement.clientName.toUpperCase()}  |  FY${params.engagement.fiscalYear}  |  ${period}`;
-  wsIndex.getRow(1).getCell(1).font = { bold: true, size: 13, color: { argb: COLORS.white }, name: "Arial" };
+  wsIndex.getRow(1).getCell(1).font = { bold: true, size: 12, color: { argb: COLORS.white }, name: "Calibri" };
   wsIndex.getRow(1).getCell(1).fill = cellFill(COLORS.navyHeader);
   wsIndex.getRow(1).getCell(1).alignment = { horizontal: "left", vertical: "middle", indent: 1 };
   mergeRange(wsIndex, 1, 1, 1, idxCols.length);
@@ -520,7 +367,7 @@ export async function buildWorkbook(params: {
   idxHdrValues.forEach((v, i) => {
     const c = idxHdr.getCell(i + 1);
     c.value = v;
-    c.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+    c.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
     c.fill = cellFill(COLORS.navyHeader);
     c.alignment = { horizontal: "center", vertical: "middle" };
     c.border = thinBorder();
@@ -570,13 +417,14 @@ export async function buildWorkbook(params: {
     { key: "age",         width: 10 },
     { key: "notes",       width: 30 },
   ];
+  applyPrintSetup(wsPbc, { clientName: params.engagement.clientName, freezeRow: 1, filterRow: 1, tabColor: "2A6099" });
   const pbcHdrVals = ["#", "Control", "PBC Description", "File Name", "Status", "Due Date", "Received", "Days Open", "Notes"];
   const pbcHdr = wsPbc.getRow(1);
   pbcHdr.height = 17;
   pbcHdrVals.forEach((v, i) => {
     const c = pbcHdr.getCell(i + 1);
     c.value = v;
-    c.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+    c.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
     c.fill = cellFill(COLORS.navyHeader);
     c.alignment = { horizontal: "center", vertical: "middle" };
     c.border = thinBorder();
@@ -598,7 +446,7 @@ export async function buildWorkbook(params: {
     });
     r.height = 14;
     const bg = idx % 2 === 0 ? COLORS.greyLight : COLORS.white;
-    r.eachCell(c => { c.font = { size: 9, name: "Arial" }; c.fill = cellFill(bg); c.border = thinBorder(); c.alignment = { vertical: "middle", wrapText: true }; });
+    r.eachCell(c => { c.font = { size: 10, name: "Calibri" }; c.fill = cellFill(bg); c.border = thinBorder(); c.alignment = { vertical: "middle", wrapText: true }; });
     const sc = r.getCell(5);
     sc.font = { size: 9, name: "Arial", bold: true, color: { argb: pbc.status === "Accepted" ? COLORS.green : pbc.status === "Rejected" ? COLORS.red : COLORS.orange } };
     if (age > 7) { const ac = r.getCell(8); ac.font = { size: 9, name: "Arial", bold: true, color: { argb: COLORS.red } }; }
@@ -620,7 +468,7 @@ export async function buildWorkbook(params: {
   ipeHdrVals.forEach((v, i) => {
     const c = ipeHdr.getCell(i + 1);
     c.value = v;
-    c.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+    c.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
     c.fill = cellFill(COLORS.navyHeader);
     c.border = thinBorder();
     c.alignment = { horizontal: "center", vertical: "middle" };
@@ -636,11 +484,12 @@ export async function buildWorkbook(params: {
     });
     r.height = 14;
     const bg = idx % 2 === 0 ? COLORS.greyLight : COLORS.white;
-    r.eachCell(c => { c.font = { size: 9, name: "Arial" }; c.fill = cellFill(bg); c.border = thinBorder(); c.alignment = { vertical: "middle" }; });
+    r.eachCell(c => { c.font = { size: 10, name: "Calibri" }; c.fill = cellFill(bg); c.border = thinBorder(); c.alignment = { vertical: "middle" }; });
     const colorFn = (v: string) => v === "Pass" ? COLORS.green : v === "Exception" ? COLORS.red : COLORS.orange;
     r.getCell(5).font = { size: 9, name: "Arial", bold: true, color: { argb: colorFn(ipe.completenessStatus) } };
     r.getCell(6).font = { size: 9, name: "Arial", bold: true, color: { argb: colorFn(ipe.accuracyStatus) } };
   });
+  applyPrintSetup(wsIpe, { clientName: params.engagement.clientName, freezeRow: 1, filterRow: 1, tabColor: "5B4A8C" });
 
   // ── TAB 4+: Per-control workpapers ───────────────────────────────────────
   for (const wp of params.workpapers) {
@@ -700,7 +549,7 @@ export async function buildWorkbook(params: {
       const isPass = wp.conclusion === "Pass";
       const cLabel = ws.getRow(row);
       cLabel.getCell(1).value = `CONCLUSION — ${isPass ? "NO EXCEPTIONS NOTED" : "EXCEPTION(S) NOTED"}`;
-      cLabel.getCell(1).font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+      cLabel.getCell(1).font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
       cLabel.getCell(1).fill = cellFill(isPass ? COLORS.green : COLORS.red);
       cLabel.getCell(1).border = thinBorder();
       cLabel.height = 14;
@@ -709,7 +558,7 @@ export async function buildWorkbook(params: {
 
       const cText = ws.getRow(row);
       cText.getCell(1).value = conclusionText;
-      cText.getCell(1).font = { size: 9, name: "Arial" };
+      cText.getCell(1).font = { size: 10, name: "Calibri" };
       cText.getCell(1).fill = cellFill(isPass ? COLORS.greenLight : COLORS.redLight);
       cText.getCell(1).alignment = { wrapText: true, vertical: "top", indent: 1 };
       cText.getCell(1).border = thinBorder();
@@ -718,43 +567,104 @@ export async function buildWorkbook(params: {
       row++;
     }
 
-    // Ref to GTest sheet
+    // ── Inline sample testing table (Big 4 style: embedded in same sheet) ──
     if (wp.testDetail?.rows?.length) {
+      const controlType = ctrl.itgcType ?? ctrl.itacType ?? "CM";
+      const testColumns = GTEST_COLUMNS[controlType] ?? GTEST_COLUMNS.CM;
+      const tnc = testColumns.length;
+
       row++;
-      const refRow = ws.getRow(row);
-      refRow.getCell(1).value = `TEST DETAIL: See companion sheet "${wp.controlRef} GTest" for individual sample item testing.`;
-      refRow.getCell(1).font = { size: 9, italic: true, name: "Arial", color: { argb: COLORS.navyHeader } };
-      refRow.getCell(1).fill = cellFill(COLORS.lightBlue);
-      refRow.getCell(1).border = thinBorder();
+      // Section divider
+      const testHdrLabel = ws.getRow(row);
+      testHdrLabel.getCell(1).value = `SAMPLE TESTING DETAIL — ${wp.sampleSize ?? testColumns.length} ITEMS SELECTED`;
+      testHdrLabel.getCell(1).font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
+      testHdrLabel.getCell(1).fill = cellFill(COLORS.navyHeader);
+      testHdrLabel.getCell(1).border = thinBorder();
+      testHdrLabel.height = 16;
       mergeRange(ws, row, 1, row, nc);
+      row++;
+
+      // Column headers for test table
+      const testColHdr = ws.getRow(row);
+      testColHdr.height = 36;
+      testColumns.forEach((col, i) => {
+        if (i >= nc) return;
+        const cell = testColHdr.getCell(i + 1);
+        cell.value = col.label;
+        cell.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Calibri" };
+        cell.fill = cellFill(COLORS.navyLight);
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        cell.border = thinBorder();
+      });
+      row++;
+
+      // Sample item rows
+      for (const item of wp.testDetail.rows) {
+        const dataRow = ws.getRow(row);
+        dataRow.height = 16;
+        const isException = item.overallResult === "Exception";
+        const rowBg = isException ? COLORS.redLight : (row % 2 === 0 ? COLORS.greyLight : COLORS.white);
+        testColumns.forEach((col, i) => {
+          if (i >= nc) return;
+          const cell = dataRow.getCell(i + 1);
+          const attr = item.attributes?.[col.key];
+          let value: string | number = "";
+          if (col.key === "itemNo")        value = item.itemNo;
+          else if (col.key === "ticketRef")    value = item.ticketRef ?? "";
+          else if (col.key === "description")  value = item.description ?? "";
+          else if (col.key === "result")       value = item.overallResult ?? "";
+          else if (col.key === "auditorNotes") value = item.auditorNotes ?? "";
+          else if (attr) value = attr.result === "Exception" ? `! ${attr.note || "Exception"}` : attr.tickmark || attr.result || "";
+          cell.value = value;
+          cell.font = {
+            size: 9, name: "Calibri",
+            bold: col.key === "result",
+            color: { argb: col.key === "result" ? (item.overallResult === "Pass" ? COLORS.green : COLORS.red) : (attr?.result === "Exception" ? COLORS.red : "000000") },
+          };
+          cell.fill = cellFill(rowBg);
+          cell.alignment = { horizontal: col.key === "auditorNotes" || col.key === "description" ? "left" : "center", vertical: "middle", wrapText: col.key === "description" || col.key === "auditorNotes" };
+          cell.border = thinBorder();
+        });
+        row++;
+      }
+
+      // Summary row
+      const exceptionCount = wp.testDetail.rows.filter(r => r.overallResult === "Exception").length;
+      const summaryRow = ws.getRow(row);
+      summaryRow.getCell(1).value = `TOTAL TESTED: ${wp.testDetail.rows.length}  |  EXCEPTIONS: ${exceptionCount}  |  RATE: ${wp.testDetail.exceptionRate}`;
+      summaryRow.getCell(1).font = { bold: true, size: 9, name: "Calibri", color: { argb: exceptionCount > 0 ? COLORS.red : COLORS.green } };
+      summaryRow.getCell(1).fill = cellFill(exceptionCount > 0 ? COLORS.redLight : COLORS.greenLight);
+      summaryRow.getCell(1).border = thinBorder();
+      summaryRow.height = 14;
+      mergeRange(ws, row, 1, row, nc);
+      row++;
+
+      // Manager conclusion
+      if (wp.testDetail.managerDraftConclusion) {
+        row++;
+        const concLabel = ws.getRow(row);
+        concLabel.getCell(1).value = "CONCLUSION (DRAFT)";
+        concLabel.getCell(1).font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
+        concLabel.getCell(1).fill = cellFill(exceptionCount > 0 ? COLORS.red : COLORS.green);
+        concLabel.getCell(1).border = thinBorder();
+        concLabel.height = 14;
+        mergeRange(ws, row, 1, row, nc);
+        row++;
+        const concText = ws.getRow(row);
+        concText.getCell(1).value = wp.testDetail.managerDraftConclusion;
+        concText.getCell(1).font = { size: 10, name: "Calibri" };
+        concText.getCell(1).fill = cellFill(exceptionCount > 0 ? COLORS.redLight : COLORS.greenLight);
+        concText.getCell(1).alignment = { wrapText: true, vertical: "top", indent: 1 };
+        concText.getCell(1).border = thinBorder();
+        concText.height = 45;
+        mergeRange(ws, row, 1, row, nc);
+        row++;
+      }
     }
-  }
 
-  // ── GTest sheets (one per control with test detail) ───────────────────────
-  for (const wp of params.workpapers) {
-    if (!wp.testDetail?.rows?.length) continue;
-    const ctrl = params.controls.find(c => c.controlRef === wp.controlRef);
-    if (!ctrl) continue;
-
-    buildGTestSheet(wb, {
-      controlRef: wp.controlRef,
-      controlType: ctrl.itgcType ?? ctrl.itacType ?? "CM",
-      controlObjective: ctrl.objective,
-      frequency: ctrl.frequency,
-      riskLevel: ctrl.riskLevel,
-      clientName: params.engagement.clientName,
-      period,
-      preparedBy: wp.preparedBy ?? "Pending",
-      preparedDate: wp.preparedAt ? format(new Date(wp.preparedAt), "MM/dd/yy") : today,
-      reviewedBy: wp.reviewedBy ?? "Pending review",
-      reviewedDate: wp.reviewedAt ? format(new Date(wp.reviewedAt), "MM/dd/yy") : "",
-      approvedBy: wp.approvedBy ?? undefined,
-      approvedDate: wp.approvedAt ? format(new Date(wp.approvedAt), "MM/dd/yy") : undefined,
-      populationCount: wp.populationCount ?? 0,
-      populationDescription: wp.populationDescription ?? "",
-      sampleSize: wp.sampleSize ?? 0,
-      testDetail: wp.testDetail,
-    });
+    // Tab color by status
+    const tabColor = ctrl.status === "Complete" ? "27AE60" : ctrl.status === "Exception" ? "E74C3C" : ctrl.status === "InProgress" ? "F39C12" : "95A5A6";
+    applyPrintSetup(ws, { clientName: params.engagement.clientName, freezeRow: 4, tabColor });
   }
 
   // ── Evidence / Annotated Screenshots ─────────────────────────────────────
@@ -774,7 +684,7 @@ export async function buildWorkbook(params: {
     ["Control Ref", "File Name", "Test Attribute Annotations", "Notes"].forEach((v, i) => {
       const c = evidHdr.getCell(i + 1);
       c.value = v;
-      c.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+      c.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
       c.fill = cellFill(COLORS.navyHeader);
       c.border = thinBorder();
       c.alignment = { horizontal: "center", vertical: "middle" };
@@ -799,7 +709,7 @@ export async function buildWorkbook(params: {
       metaRow.getCell(3).value = attrSummary || "No test attributes assigned";
       metaRow.getCell(4).value = pbc.notes ?? "";
       metaRow.eachCell(c => {
-        c.font = { size: 9, name: "Arial" };
+        c.font = { size: 10, name: "Calibri" };
         c.fill = cellFill(COLORS.lightBlue);
         c.border = thinBorder();
         c.alignment = { wrapText: true, vertical: "top" };
@@ -818,7 +728,8 @@ export async function buildWorkbook(params: {
           if (imgResponse.ok) imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
         }
         if (imgBuffer && imgBuffer.length > 100) {
-          const imageId = wb.addImage({ buffer: imgBuffer, extension: "png" });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const imageId = wb.addImage({ buffer: imgBuffer as any, extension: "png" });
           wsEvid.addImage(imageId, {
             tl: { col: 0, row: evidRow - 1 },
             ext: { width: 600, height: 340 },
@@ -858,7 +769,7 @@ export async function buildWorkbook(params: {
           r.getCell(3).value = attrBoxes.map(b => b.label || b.reason).filter(Boolean).join("; ") || "None";
           r.getCell(4).value = attrBoxes.length > 0 ? "Evidenced" : "Pending";
           r.eachCell(c => {
-            c.font = { size: 9, name: "Arial" };
+            c.font = { size: 10, name: "Calibri" };
             c.fill = cellFill(attrBoxes.length > 0 ? COLORS.greenLight : COLORS.orangeLight);
             c.border = thinBorder();
             c.alignment = { wrapText: true, vertical: "middle" };
@@ -872,6 +783,7 @@ export async function buildWorkbook(params: {
       // Gap between screenshots
       evidRow += 2;
     }
+    applyPrintSetup(wsEvid, { clientName: params.engagement.clientName, freezeRow: 1, landscape: true, tabColor: "1E8449" });
   }
 
   // ── Exception Log ────────────────────────────────────────────────────────
@@ -893,7 +805,7 @@ export async function buildWorkbook(params: {
     excHdrVals.forEach((v, i) => {
       const c = excHdr.getCell(i + 1);
       c.value = v;
-      c.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+      c.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
       c.fill = cellFill(COLORS.red);
       c.border = thinBorder();
       c.alignment = { horizontal: "center", vertical: "middle" };
@@ -910,10 +822,11 @@ export async function buildWorkbook(params: {
         remed: exc.remediationPlan ?? "",
       });
       r.height = 30;
-      r.eachCell(c => { c.font = { size: 9, name: "Arial" }; c.fill = cellFill(COLORS.redLight); c.border = thinBorder(); c.alignment = { wrapText: true, vertical: "top" }; });
+      r.eachCell(c => { c.font = { size: 10, name: "Calibri" }; c.fill = cellFill(COLORS.redLight); c.border = thinBorder(); c.alignment = { wrapText: true, vertical: "top" }; });
       const sevColor = exc.severity === "Material Weakness" ? COLORS.red : exc.severity === "Significant Deficiency" ? COLORS.orange : COLORS.grey;
       r.getCell(4).font = { bold: true, size: 9, name: "Arial", color: { argb: sevColor } };
     });
+    applyPrintSetup(wsExc, { clientName: params.engagement.clientName, freezeRow: 1, filterRow: 1, tabColor: COLORS.red });
   }
 
   // ── Tickmark Legend ──────────────────────────────────────────────────────
@@ -924,7 +837,7 @@ export async function buildWorkbook(params: {
   ["Symbol", "Description", "Usage Context"].forEach((v, i) => {
     const c = tickHdr.getCell(i + 1);
     c.value = v;
-    c.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+    c.font = { bold: true, size: 10, color: { argb: COLORS.white }, name: "Calibri" };
     c.fill = cellFill(COLORS.navyHeader);
     c.border = thinBorder();
     c.alignment = { horizontal: "center", vertical: "middle" };
@@ -942,9 +855,10 @@ export async function buildWorkbook(params: {
     const r = wsTick.addRow([tick, desc, usage]);
     r.height = 14;
     const bg = idx % 2 === 0 ? COLORS.greyLight : COLORS.white;
-    r.eachCell(c => { c.font = { size: 9, name: "Arial" }; c.fill = cellFill(bg); c.border = thinBorder(); c.alignment = { vertical: "middle" }; });
+    r.eachCell(c => { c.font = { size: 10, name: "Calibri" }; c.fill = cellFill(bg); c.border = thinBorder(); c.alignment = { vertical: "middle" }; });
     r.getCell(1).font = { bold: true, size: 10, name: "Courier New", color: { argb: COLORS.navyHeader } };
   });
+  applyPrintSetup(wsTick, { clientName: params.engagement.clientName, freezeRow: 1, tabColor: "7F8C8D" });
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
