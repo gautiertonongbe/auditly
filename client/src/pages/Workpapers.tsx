@@ -39,6 +39,15 @@ const CTRL_STATUS: Record<string, { label: string; color: string; bg: string }> 
 
 const ORDER = ["CM", "AM", "CO", "PD", "Input", "Processing", "Output", "Interface"];
 
+function deriveWpStatus(wp: { preparedAt: string | Date | null; reviewedAt: string | Date | null; approvedAt: string | Date | null; conclusion: string; procedureDraft: string | null; resultsDraft: string | null }): string {
+  if (wp.conclusion === "ExceptionNoted") return "Exception";
+  if (wp.approvedAt) return "Signed";
+  if (wp.reviewedAt) return "ReviewComplete";
+  if (wp.preparedAt) return "PendingReview";
+  if (wp.procedureDraft || wp.resultsDraft) return "InProgress";
+  return "Draft";
+}
+
 export default function WorkpapersPage() {
   const [, params] = useRoute("/engagements/:id/workpapers");
   const engagementId = params?.id ?? "";
@@ -56,9 +65,9 @@ export default function WorkpapersPage() {
   }
 
   const total = controls?.length ?? 0;
-  const signed = (wps ?? []).filter(w => w.status === "Signed").length;
-  const reviewComplete = (wps ?? []).filter(w => w.status === "ReviewComplete").length;
-  const exceptions = (wps ?? []).filter(w => w.status === "Exception").length;
+  const signed = (wps ?? []).filter(w => deriveWpStatus(w) === "Signed").length;
+  const reviewComplete = (wps ?? []).filter(w => deriveWpStatus(w) === "ReviewComplete").length;
+  const exceptions = (wps ?? []).filter(w => deriveWpStatus(w) === "Exception").length;
 
   return (
     <div style={{ padding: "32px 32px 48px" }}>
@@ -117,7 +126,8 @@ export default function WorkpapersPage() {
 
               {group.map((ctrl, i) => {
                 const wp = wpMap.get(ctrl.id);
-                const wpCfg = wp?.status ? (WP_STATUS[wp.status] ?? WP_STATUS.Draft) : null;
+                const wpStatus = wp ? deriveWpStatus(wp) : null;
+                const wpCfg = wpStatus ? (WP_STATUS[wpStatus] ?? WP_STATUS.Draft) : null;
                 const ctrlCfg = CTRL_STATUS[ctrl.status] ?? CTRL_STATUS.NotStarted;
                 const WpIcon = wpCfg?.icon ?? Circle;
                 return (

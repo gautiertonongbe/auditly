@@ -43,17 +43,17 @@ export const workpapersRouter = router({
       conclusion: z.enum(["Pass", "ExceptionNoted", "InProgress"]).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const { rollforwardFromDate, ...rest } = input;
+      const rfDate = rollforwardFromDate ? new Date(rollforwardFromDate) : null;
       const existing = await ctx.db.select().from(workpapers).where(eq(workpapers.controlId, input.controlId));
       if (existing.length > 0) {
-        await ctx.db.update(workpapers).set({ ...input, updatedAt: new Date() }).where(eq(workpapers.controlId, input.controlId));
-        return existing[0];
+        await ctx.db.update(workpapers).set({ ...rest, rollforwardFromDate: rfDate, updatedAt: new Date() }).where(eq(workpapers.controlId, input.controlId));
+        const [updated] = await ctx.db.select().from(workpapers).where(eq(workpapers.controlId, input.controlId));
+        return updated;
       }
-      const [wp] = await ctx.db.insert(workpapers).values({
-        id: randomUUID(),
-        ...input,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }).returning();
+      const id = randomUUID();
+      await ctx.db.insert(workpapers).values({ id, ...rest, rollforwardFromDate: rfDate, createdAt: new Date(), updatedAt: new Date() });
+      const [wp] = await ctx.db.select().from(workpapers).where(eq(workpapers.id, id));
       return wp;
     }),
 
