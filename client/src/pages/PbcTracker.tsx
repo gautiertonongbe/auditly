@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink, Mail, Send, Paperclip, Download } from "lucide-react";
+import { ArrowLeft, Plus, FileCheck2, Clock, CheckCircle, XCircle, AlertCircle, Upload, Share2, Copy, Check, ExternalLink, Mail, Send, Paperclip, Download, Sparkles, ChevronRight, MoreHorizontal, UserCheck } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { format, differenceInDays } from "date-fns";
 
@@ -384,6 +384,66 @@ Best regards,
   );
 }
 
+// ── Forward for Review Modal ────────────────────────────────────────────────
+function ForwardModal({ engagementId, onClose }: { engagementId: string; onClose: () => void }) {
+  const [note, setNote] = useState("");
+  const [sent, setSent] = useState(false);
+  const updateStatus = trpc.engagements.updateStatus.useMutation({
+    onSuccess: () => setSent(true),
+  });
+
+  if (sent) return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 14, width: 400, padding: 36, textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+        <div style={{ width: 52, height: 52, borderRadius: 26, background: "#EAFAF1", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+          <CheckCircle size={24} color="#27AE60" />
+        </div>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 8px" }}>Forwarded for Review</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 24px" }}>This engagement has been moved to the review queue.</p>
+        <button onClick={onClose} style={btnPri}>Done</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 14, width: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", overflow: "hidden" }}>
+        <div style={{ background: "linear-gradient(135deg, #1E3A5F 0%, #2A4F7C 100%)", padding: "20px 24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <UserCheck size={15} color="#fff" />
+            </div>
+            <h2 style={{ color: "#fff", fontSize: 15, fontWeight: 700, margin: 0 }}>Forward for Review</h2>
+          </div>
+        </div>
+        <div style={{ padding: 24 }}>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 16px" }}>
+            This will move the engagement to <strong>In Review</strong> status. The assigned reviewer will see it in their queue.
+          </p>
+          <label style={lbl}>Note to reviewer (optional)</label>
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            rows={3}
+            placeholder="e.g. All evidence reviewed and accepted. Please check AM-01 sample selection."
+            style={{ ...inp, height: "auto", padding: "10px", resize: "vertical", fontFamily: "inherit" }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
+            <button onClick={onClose} style={btnSec}>Cancel</button>
+            <button
+              onClick={() => updateStatus.mutate({ id: engagementId, status: "review" })}
+              disabled={updateStatus.isPending}
+              style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6 }}>
+              <UserCheck size={13} />
+              {updateStatus.isPending ? "Forwarding..." : "Forward to Review Queue"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PbcTrackerPage() {
   const [, params] = useRoute("/engagements/:id/pbc");
   const engagementId = params?.id ?? "";
@@ -391,188 +451,268 @@ export default function PbcTrackerPage() {
   const [showPortal, setShowPortal] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
   const [showFieldworkComplete, setShowFieldworkComplete] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [showForward, setShowForward] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const { data: items, refetch } = trpc.pbc.listByEngagement.useQuery({ engagementId });
   const { data: controls } = trpc.controls.listByEngagement.useQuery({ engagementId });
   const { data: engagement } = trpc.engagements.get.useQuery({ id: engagementId });
   const updateStatus = trpc.pbc.updateStatus.useMutation({ onSuccess: () => refetch() });
-
-  const filtered = (items ?? []).filter(i => filterStatus === "all" || i.status === filterStatus);
-
-  const counts = (items ?? []).reduce<Record<string, number>>((acc, i) => { acc[i.status] = (acc[i.status] ?? 0) + 1; return acc; }, {});
-  const overdue = (items ?? []).filter(i => i.dueDate && i.status === "Requested" && differenceInDays(new Date(), new Date(i.dueDate)) > 0).length;
-
   const { data: exceptions } = trpc.exceptions.listByEngagement.useQuery({ engagementId });
+
+  const exportMutation = trpc.export.exportEngagement.useMutation({
+    onSuccess: (data) => {
+      const link = document.createElement("a");
+      link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${data.base64}`;
+      link.download = data.fileName;
+      link.click();
+    },
+  });
+
+  const allItems = items ?? [];
+  const counts = allItems.reduce<Record<string, number>>((acc, i) => { acc[i.status] = (acc[i.status] ?? 0) + 1; return acc; }, {});
+  const receivedCount = (counts.Received ?? 0) + (counts.Accepted ?? 0);
+  const acceptedCount = counts.Accepted ?? 0;
+  const pendingCount = counts.Requested ?? 0;
+  const overdue = allItems.filter(i => i.dueDate && i.status === "Requested" && differenceInDays(new Date(), new Date(i.dueDate)) > 0).length;
 
   const clientName = engagement?.clientName ?? "Client";
   const engagementPeriod = engagement?.periodEnd ? format(new Date(engagement.periodEnd), "MMMM d, yyyy") : "";
   const controlsTested = (engagement?.controls ?? []).filter(c => c.status !== "NotStarted").length;
   const exceptionsCount = exceptions?.length ?? 0;
 
+  // Determine which step is active
+  const step = acceptedCount > 0 && acceptedCount >= allItems.length * 0.8 ? 3
+    : receivedCount > 0 ? 2
+    : 1;
+
   return (
-    <div style={{ padding: 32 }}>
+    <div style={{ padding: 32, maxWidth: 960, margin: "0 auto" }}>
+      {/* Back link + header */}
       <Link href={`/engagements/${engagementId}`}>
-        <a style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", textDecoration: "none", marginBottom: 16 }}>
-          <ArrowLeft size={14} /> Engagement Overview
+        <a style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", textDecoration: "none", marginBottom: 18 }}>
+          <ArrowLeft size={14} /> {clientName}
         </a>
       </Link>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-strong)", margin: 0 }}>PBC Tracker</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-strong)", margin: 0 }}>Evidence Review</h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3 }}>
-            {items?.length ?? 0} items · {counts.Accepted ?? 0} accepted · {overdue > 0 ? <span style={{ color: "var(--red)" }}>{overdue} overdue</span> : "none overdue"}
+            {allItems.length} items · {acceptedCount} accepted{overdue > 0 && <span style={{ color: "var(--red)" }}> · {overdue} overdue</span>}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={() => setShowReminder(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
-            <Mail size={14} /> Send Reminder
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={() => setShowCreate(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
+            <Plus size={13} /> Request Evidence
           </button>
-          <button onClick={() => setShowFieldworkComplete(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6, borderColor: "#A9DFBF", color: "var(--green)" }}>
-            <Send size={14} /> Notify Client: Done
+          {/* More menu */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowMoreMenu(v => !v)}
+              style={{ ...btnSec, padding: "8px 10px", display: "flex", alignItems: "center" }}>
+              <MoreHorizontal size={15} />
+            </button>
+            {showMoreMenu && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 49 }} onClick={() => setShowMoreMenu(false)} />
+                <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 50, background: "#fff", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200, overflow: "hidden" }}>
+                  {[
+                    { label: "Share Client Portal", icon: Share2, action: () => { setShowPortal(true); setShowMoreMenu(false); } },
+                    { label: "Send Reminder Email", icon: Mail, action: () => { setShowReminder(true); setShowMoreMenu(false); } },
+                    { label: "Notify Client: Fieldwork Done", icon: Send, action: () => { setShowFieldworkComplete(true); setShowMoreMenu(false); } },
+                  ].map(({ label, icon: Icon, action }) => (
+                    <button key={label} onClick={action} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 16px", background: "none", border: "none", fontSize: 13, color: "var(--text)", cursor: "pointer", textAlign: "left" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-alt)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "none")}>
+                      <Icon size={14} color="var(--text-muted)" /> {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 3-Step Workflow Strip ───────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", alignItems: "center", marginBottom: 32, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
+        {/* Step 1 */}
+        <div style={{ padding: "20px 24px", borderRight: "1px solid var(--border)", background: step === 1 ? "var(--accent-light)" : "transparent" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 11, background: step >= 1 ? "var(--accent)" : "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {step > 1 ? <Check size={12} color="#fff" /> : <span style={{ fontSize: 11, color: "#fff", fontWeight: 700 }}>1</span>}
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Collect Evidence</span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+            {receivedCount} of {allItems.length} received
+            {pendingCount > 0 && <span style={{ color: "var(--text-muted)" }}> · {pendingCount} pending</span>}
+          </p>
+        </div>
+
+        <div style={{ padding: "0 4px" }}><ChevronRight size={16} color="var(--border)" /></div>
+
+        {/* Step 2 */}
+        <div style={{ padding: "18px 20px", borderRight: "1px solid var(--border)", background: step === 2 ? "var(--accent-light)" : "transparent" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 11, background: step >= 2 ? "var(--accent)" : "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {step > 2 ? <Check size={12} color="#fff" /> : <span style={{ fontSize: 11, color: "#fff", fontWeight: 700 }}>2</span>}
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>AI Analysis</span>
+          </div>
+          <button
+            onClick={() => exportMutation.mutate({ engagementId })}
+            disabled={exportMutation.isPending || acceptedCount === 0}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              background: acceptedCount > 0 ? "var(--navy)" : "var(--border)",
+              color: "#fff", border: "none", borderRadius: 8,
+              padding: "9px 16px", fontSize: 13, fontWeight: 600,
+              cursor: acceptedCount > 0 ? "pointer" : "not-allowed",
+              opacity: exportMutation.isPending ? 0.8 : 1,
+              whiteSpace: "nowrap",
+            }}>
+            {exportMutation.isPending
+              ? <><span style={{ display: "inline-block", width: 13, height: 13, borderRadius: 7, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", animation: "spin 0.8s linear infinite" }} /> Analyzing...</>
+              : <><Sparkles size={13} /> Analyze & Download</>}
           </button>
-          <button onClick={() => setShowPortal(true)} style={{ ...btnSec, display: "flex", alignItems: "center", gap: 6 }}>
-            <Share2 size={14} /> Share Portal
-          </button>
-          <button onClick={() => setShowCreate(true)} style={{ ...btnPri, display: "flex", alignItems: "center", gap: 6 }}>
-            <Plus size={14} /> Request PBC Item
+          {acceptedCount === 0 && <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "6px 0 0" }}>Accept evidence items first</p>}
+        </div>
+
+        <div style={{ padding: "0 4px" }}><ChevronRight size={16} color="var(--border)" /></div>
+
+        {/* Step 3 */}
+        <div style={{ padding: "18px 20px", background: step === 3 ? "var(--accent-light)" : "transparent" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 11, background: step >= 3 ? "var(--accent)" : "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: "#fff", fontWeight: 700 }}>3</span>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Forward for Review</span>
+          </div>
+          <button
+            onClick={() => setShowForward(true)}
+            disabled={acceptedCount === 0}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              background: acceptedCount > 0 ? "#27AE60" : "var(--border)",
+              color: "#fff", border: "none", borderRadius: 8,
+              padding: "9px 16px", fontSize: 13, fontWeight: 600,
+              cursor: acceptedCount > 0 ? "pointer" : "not-allowed",
+              whiteSpace: "nowrap",
+            }}>
+            <UserCheck size={13} /> Send to Reviewer
           </button>
         </div>
       </div>
 
-      {/* Status filters */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        <button onClick={() => setFilterStatus("all")} style={{ ...filterBtn, background: filterStatus === "all" ? "var(--navy)" : "var(--surface)", color: filterStatus === "all" ? "#fff" : "var(--text)", borderColor: filterStatus === "all" ? "var(--navy)" : "var(--border)" }}>
-          All ({items?.length ?? 0})
-        </button>
-        {Object.entries(STATUS_CFG).map(([status, { label, color }]) => (
-          <button key={status} onClick={() => setFilterStatus(status)}
-            style={{ ...filterBtn, background: filterStatus === status ? color : "var(--surface)", color: filterStatus === status ? "#fff" : color, borderColor: filterStatus === status ? color : "var(--border)" }}>
-            {label} ({counts[status] ?? 0})
-          </button>
-        ))}
-      </div>
-
-      {/* Table */}
+      {/* ── Evidence Items ──────────────────────────────────────────────────── */}
       <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "var(--surface-alt)" }}>
-              {["Control", "Description", "Due Date", "File", "Status", "Action"].map(h => (
+              {["Control", "Evidence Description", "File", "Status", ""].map(h => (
                 <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((item, i) => {
+            {allItems.map((item, i) => {
               const cfg = STATUS_CFG[item.status] ?? STATUS_CFG.Requested;
               const StatusIcon = cfg.icon;
               const ctrl = controls?.find(c => c.id === item.controlId);
               const dueDate = item.dueDate ? new Date(item.dueDate) : null;
               const isOverdue = dueDate && item.status === "Requested" && differenceInDays(new Date(), dueDate) > 0;
               const daysOverdue = dueDate ? differenceInDays(new Date(), dueDate) : 0;
+
               return (
-                <tr key={item.id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none", background: i % 2 === 0 ? "#fff" : "var(--surface-alt)" }}>
-                  <td style={{ padding: "12px 16px" }}>
-                    {ctrl ? <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 7px", borderRadius: 4 }}>{ctrl.controlRef}</span> : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>}
+                <tr key={item.id} style={{ borderBottom: i < allItems.length - 1 ? "1px solid var(--border)" : "none", background: i % 2 === 0 ? "#fff" : "var(--surface-alt)" }}>
+                  <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                    {ctrl
+                      ? <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--accent-light)", padding: "2px 7px", borderRadius: 4 }}>{ctrl.controlRef}</span>
+                      : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>}
                   </td>
-                  <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--text)", maxWidth: 280 }}>
+                  <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--text)", maxWidth: 320 }}>
                     <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</div>
-                    {item.isIpe && <span style={{ fontSize: 10, background: "#E8F8F5", color: "#16A085", padding: "1px 6px", borderRadius: 3, fontWeight: 600, marginTop: 3, display: "inline-block" }}>IPE</span>}
-                  </td>
-                  <td style={{ padding: "12px 16px", fontSize: 13 }}>
-                    {dueDate ? (
-                      <span style={{ color: isOverdue ? "var(--red)" : "var(--text)", fontWeight: isOverdue ? 700 : 400 }}>
-                        {format(dueDate, "MMM d, yyyy")}
-                        {isOverdue && <div style={{ fontSize: 10, color: "var(--red)" }}>{daysOverdue}d overdue</div>}
-                      </span>
-                    ) : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                    <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+                      {item.isIpe && <span style={{ fontSize: 10, background: "#E8F8F5", color: "#16A085", padding: "1px 6px", borderRadius: 3, fontWeight: 600 }}>IPE</span>}
+                      {dueDate && isOverdue && <span style={{ fontSize: 10, color: "var(--red)", fontWeight: 600 }}>{daysOverdue}d overdue</span>}
+                      {dueDate && !isOverdue && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Due {format(dueDate, "MMM d")}</span>}
+                    </div>
                   </td>
                   <td style={{ padding: "12px 16px" }}>
                     {item.fileName ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <Paperclip size={12} color="var(--accent)" />
-                        {item.fileUrl ? (
-                          <a href={item.fileUrl} target="_blank" rel="noreferrer"
-                            style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                            title={item.fileName}>
-                            {item.fileName}
-                            <Download size={11} style={{ flexShrink: 0 }} />
+                      item.fileUrl
+                        ? <a href={item.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.fileName}>
+                            <Paperclip size={11} /> {item.fileName}
                           </a>
-                        ) : (
-                          <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }} title={item.fileName}>
-                            {item.fileName}
+                        : <span style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.fileName}>
+                            <Paperclip size={11} /> {item.fileName}
                           </span>
-                        )}
-                      </div>
                     ) : (
                       <span style={{ fontSize: 12, color: "#CBD5E1", display: "flex", alignItems: "center", gap: 4 }}>
-                        <Upload size={11} /> No file
+                        <Upload size={11} /> Awaiting file
                       </span>
                     )}
                   </td>
-                  <td style={{ padding: "12px 16px" }}>
+                  <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 600 }}>
                       <StatusIcon size={11} /> {cfg.label}
                     </span>
                   </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {item.status === "Received" && (
+                  <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                    {item.status === "Received" && (
+                      <div style={{ display: "flex", gap: 4 }}>
                         <button onClick={() => updateStatus.mutate({ id: item.id, status: "Accepted" })}
-                          style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, border: "1px solid #A9DFBF", background: "#EAFAF1", color: "var(--green)", cursor: "pointer", fontWeight: 600 }}>
+                          style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid #A9DFBF", background: "#EAFAF1", color: "#27AE60", cursor: "pointer", fontWeight: 600 }}>
                           Accept
                         </button>
-                      )}
-                      {item.status === "Received" && (
                         <button onClick={() => updateStatus.mutate({ id: item.id, status: "Rejected" })}
-                          style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, border: "1px solid #FECACA", background: "#FDEDEC", color: "var(--red)", cursor: "pointer", fontWeight: 600 }}>
+                          style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid #FECACA", background: "#FDEDEC", color: "#E74C3C", cursor: "pointer", fontWeight: 600 }}>
                           Reject
                         </button>
-                      )}
-                      {item.status === "Requested" && (
-                        <button onClick={() => updateStatus.mutate({ id: item.id, status: "Received" })}
-                          style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer" }}>
-                          Mark Received
-                        </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                    {item.status === "Requested" && (
+                      <button onClick={() => updateStatus.mutate({ id: item.id, status: "Received" })}
+                        style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer" }}>
+                        Mark Received
+                      </button>
+                    )}
+                    {item.status === "Accepted" && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#27AE60" }}>
+                        <CheckCircle size={12} /> Done
+                      </span>
+                    )}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {!filtered.length && (
+        {!allItems.length && (
           <div style={{ padding: "50px 40px", textAlign: "center" }}>
             <FileCheck2 size={28} color="var(--border)" style={{ margin: "0 auto 12px" }} />
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No PBC items yet. Start by requesting evidence from the client.</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 16 }}>No evidence items yet.</p>
+            <button onClick={() => setShowCreate(true)} style={{ ...btnPri, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Plus size={13} /> Request First Item
+            </button>
           </div>
         )}
       </div>
 
+      {/* Modals */}
       {showCreate && <AddPbcModal engagementId={engagementId} onClose={() => setShowCreate(false)} onCreated={() => refetch()} />}
       {showPortal && <SharePortalModal engagementId={engagementId} onClose={() => setShowPortal(false)} />}
+      {showForward && <ForwardModal engagementId={engagementId} onClose={() => setShowForward(false)} />}
       {showReminder && (
-        <PbcReminderModal
-          items={items ?? []}
-          engagementId={engagementId}
-          clientName={clientName}
-          engagementPeriod={engagementPeriod}
-          onClose={() => setShowReminder(false)}
-        />
+        <PbcReminderModal items={allItems} engagementId={engagementId} clientName={clientName} engagementPeriod={engagementPeriod} onClose={() => setShowReminder(false)} />
       )}
       {showFieldworkComplete && (
-        <FieldworkCompleteModal
-          items={items ?? []}
-          clientName={clientName}
-          engagementPeriod={engagementPeriod}
-          exceptionsCount={exceptionsCount}
-          controlsTested={controlsTested}
-          onClose={() => setShowFieldworkComplete(false)}
-        />
+        <FieldworkCompleteModal items={allItems} clientName={clientName} engagementPeriod={engagementPeriod} exceptionsCount={exceptionsCount} controlsTested={controlsTested} onClose={() => setShowFieldworkComplete(false)} />
       )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
