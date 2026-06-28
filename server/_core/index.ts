@@ -78,6 +78,8 @@ void (async () => {
   await tryExec(`ALTER TABLE workpapers ADD COLUMN results_template TEXT`);
   await tryExec(`ALTER TABLE workpapers ADD COLUMN conclusion_template TEXT`);
   await tryExec(`ALTER TABLE workpapers ADD COLUMN template_id VARCHAR(36)`);
+  await tryExec(`ALTER TABLE workpapers ADD COLUMN phase ENUM('TOD','TOE','Rollforward') NULL`);
+  await tryExec(`ALTER TABLE workpapers ADD COLUMN rollforward_from_date DATETIME NULL`);
   await tryExec(`
     CREATE TABLE IF NOT EXISTS workpaper_templates (
       id VARCHAR(36) PRIMARY KEY,

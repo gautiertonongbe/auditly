@@ -32,6 +32,8 @@ export const workpapersRouter = router({
     .input(z.object({
       controlId: z.string(),
       engagementId: z.string(),
+      phase: z.enum(["TOD", "TOE", "Rollforward"]).optional().nullable(),
+      rollforwardFromDate: z.string().optional().nullable(), // ISO date string
       populationDescription: z.string().optional(),
       populationCount: z.number().optional(),
       populationPeriod: z.string().optional(),
@@ -93,6 +95,8 @@ export const workpapersRouter = router({
         riskLevel: control.riskLevel,
         population: input.population ?? wp0?.populationDescription ?? "Not yet defined",
         sampleSize,
+        phase: (wp0?.phase as "TOD" | "TOE" | "Rollforward" | null) ?? null,
+        rollforwardFromDate: wp0?.rollforwardFromDate ? new Date(wp0.rollforwardFromDate).toISOString().split("T")[0] : null,
         pbcItems: acceptedPbc,
         framework: "PCAOB",
         procedureTemplate: wp0?.procedureTemplate ?? null,

@@ -46,6 +46,30 @@ async function fetchImageAsBase64(url: string): Promise<{ data: string; mediaTyp
   }
 }
 
+// Phase-specific guidance injected into AI prompts
+const PHASE_GUIDANCE: Record<string, string> = {
+  TOD: `AUDIT PHASE: TEST OF DESIGN (TOD / Walkthrough)
+This is a walkthrough procedure, NOT a sample test. The purpose is to verify that the control is DESIGNED effectively.
+- Procedure should describe how you traced ONE transaction end-to-end through the control
+- Confirm the control design is capable of preventing or detecting the relevant risk
+- Reference specific process steps, approvals, system screenshots, and policy documents observed
+- Results should note what was observed during the walkthrough, not a sample exception rate
+- Conclusion should state whether the control is SUITABLY DESIGNED to achieve its objective`,
+
+  TOE: `AUDIT PHASE: TEST OF OPERATING EFFECTIVENESS (TOE)
+This is a sample-based test to verify the control OPERATES effectively throughout the period.
+- Procedure should describe the population, sampling method (haphazard/random per PCAOB AS 2315), and attributes tested
+- Results should summarize the sample tested, exceptions found (if any), and exception rate
+- Conclusion should state whether the control operated effectively for the entire audit period`,
+
+  Rollforward: `AUDIT PHASE: ROLLFORWARD TESTING
+This extends prior interim testing to cover the period from the interim test end date through year-end.
+- Procedure should reference the prior interim TOE results and describe how rollforward testing was performed
+- Focus on whether there were any significant changes to the control environment in the rollforward period
+- Results should compare rollforward period evidence to the interim baseline
+- Conclusion should state whether the control continued to operate effectively through year-end`,
+};
+
 export async function generateWorkpaperWriteup(params: {
   controlRef: string;
   controlObjective: string;
@@ -55,6 +79,8 @@ export async function generateWorkpaperWriteup(params: {
   riskLevel: string;
   population: string;
   sampleSize: number;
+  phase?: "TOD" | "TOE" | "Rollforward" | null;
+  rollforwardFromDate?: string | null;
   pbcItems: {
     description: string;
     fileName?: string | null;
@@ -69,6 +95,10 @@ export async function generateWorkpaperWriteup(params: {
   conclusionTemplate?: string | null;
 }): Promise<{ procedure: string; results: string; conclusion: string }> {
   const domainGuidance = DOMAIN_GUIDANCE[params.controlType] ?? "";
+  const phaseGuidance = params.phase ? (PHASE_GUIDANCE[params.phase] ?? "") : "";
+  const rollforwardNote = params.phase === "Rollforward" && params.rollforwardFromDate
+    ? `Rollforward period: ${params.rollforwardFromDate} through period end.`
+    : "";
   const hasTemplates = !!(params.procedureTemplate || params.resultsTemplate || params.conclusionTemplate);
 
   // Fetch images for PBC items that are screenshots/images
@@ -115,7 +145,7 @@ Using the firm templates above, produce the three sections:
 
   const textPrompt = `${templateBlock}You are a Big 4 SOX audit manager writing workpaper documentation. Generate a professional, ${params.framework}-compliant writeup for the following control.
 
-Control Reference: ${params.controlRef}
+${phaseGuidance ? `${phaseGuidance}\n${rollforwardNote ? rollforwardNote + "\n" : ""}\n` : ""}Control Reference: ${params.controlRef}
 Domain: ${params.domain} - ${params.controlType}
 ${domainGuidance ? `Testing Guidance: ${domainGuidance}\n` : ""}Objective: ${params.controlObjective}
 Frequency: ${params.frequency}

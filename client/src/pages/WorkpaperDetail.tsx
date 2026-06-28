@@ -199,6 +199,27 @@ export default function WorkpaperDetailPage() {
           </div>
         </div>
 
+        {/* Audit Phase row */}
+        <div style={{ padding: "10px 24px", borderBottom: "1px solid var(--border)", background: "#F8FAFC", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Audit Phase:</span>
+          {(["TOD", "TOE", "Rollforward"] as const).map(ph => {
+            const active = (wp?.phase ?? "TOE") === ph;
+            const labels: Record<string, string> = { TOD: "TOD — Test of Design", TOE: "TOE — Test of Operating Effectiveness", Rollforward: "Rollforward" };
+            const colors: Record<string, string> = { TOD: "#7C3AED", TOE: "#059669", Rollforward: "#D97706" };
+            return (
+              <button key={ph} onClick={() => upsert.mutate({ controlId, engagementId: engId, phase: ph })}
+                style={{ padding: "4px 12px", borderRadius: 20, border: `1.5px solid ${active ? colors[ph] : "var(--border)"}`, background: active ? colors[ph] : "#fff", color: active ? "#fff" : "var(--text-muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                {labels[ph]}
+              </button>
+            );
+          })}
+          {(wp?.phase ?? "TOE") === "Rollforward" && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8 }}>
+              Prior interim test through: <strong>{wp?.rollforwardFromDate ? new Date(wp.rollforwardFromDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "not set"}</strong>
+            </span>
+          )}
+        </div>
+
         {/* Population row */}
         <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--border)", display: "flex", gap: 24, flexWrap: "wrap" }}>
           {[

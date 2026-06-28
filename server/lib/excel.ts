@@ -425,6 +425,7 @@ export async function buildWorkbook(params: {
   }>;
   workpapers: Array<{
     controlRef: string;
+    phase?: string | null;
     procedureFinal?: string | null;
     procedureDraft?: string | null;
     resultsFinal?: string | null;
@@ -653,6 +654,7 @@ export async function buildWorkbook(params: {
     const preparedDate = wp.preparedAt ? format(new Date(wp.preparedAt), "MM/dd/yy") : today;
     const reviewedDate = wp.reviewedAt ? format(new Date(wp.reviewedAt), "MM/dd/yy") : "";
 
+    const phaseLabel = wp.phase === "TOD" ? "TEST OF DESIGN" : wp.phase === "Rollforward" ? "ROLLFORWARD" : "TEST OF OPERATING EFFECTIVENESS";
     applyWorkpaperHeader(ws, {
       clientName: params.engagement.clientName,
       engagementName: `SOX FY${params.engagement.fiscalYear}`,
@@ -667,7 +669,7 @@ export async function buildWorkbook(params: {
       reviewedDate,
       approvedBy: wp.approvedBy ?? undefined,
       approvedDate: wp.approvedAt ? format(new Date(wp.approvedAt), "MM/dd/yy") : undefined,
-      pageTitle: "WORKPAPER",
+      pageTitle: `WORKPAPER — ${phaseLabel}`,
       numCols: nc,
     });
 

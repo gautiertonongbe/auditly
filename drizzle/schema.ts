@@ -138,6 +138,10 @@ export const workpapers = mysqlTable("workpapers", {
   id: varchar("id", { length: 36 }).primaryKey(),
   controlId: varchar("control_id", { length: 36 }).notNull().references(() => controls.id),
   engagementId: varchar("engagement_id", { length: 36 }).notNull().references(() => engagements.id),
+  // Audit phase: TOD = Test of Design (walkthrough), TOE = Test of Operating Effectiveness,
+  // Rollforward = extending interim test to year-end
+  phase: mysqlEnum("phase", ["TOD", "TOE", "Rollforward"]),
+  rollforwardFromDate: datetime("rollforward_from_date"),   // interim test end date for Rollforward phase
   populationDescription: text("population_description"),
   populationCount: int("population_count"),
   populationPeriod: text("population_period"),
