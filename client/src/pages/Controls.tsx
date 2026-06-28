@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRoute, Link } from "wouter";
-import { ArrowLeft, Plus, ClipboardList, ChevronRight, Zap, X, CheckCircle, Trash2, PlusCircle } from "lucide-react";
+import { ArrowLeft, Plus, ClipboardList, ChevronRight, Zap, X, CheckCircle, Trash2, PlusCircle, Search, Shield, AlertTriangle, Clock3 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 // ── Status / risk display helpers ─────────────────────────────────────────
@@ -461,135 +461,236 @@ function CreateControlWizard({ engagementId, onClose, onCreated }: { engagementI
   );
 }
 
+const TYPE_LABELS: Record<string, string> = {
+  CM: "Change Mgmt", AM: "Access Mgmt", CO: "Computer Ops", PD: "Program Dev",
+  Input: "Input", Processing: "Processing", Output: "Output", Interface: "Interface",
+};
+
 export default function ControlsPage() {
   const [, params] = useRoute("/engagements/:id/controls");
   const engagementId = params?.id ?? "";
   const [showCreate, setShowCreate] = useState(false);
-  const [filter, setFilter] = useState<"all" | "ITGC" | "ITAC">("all");
+  const [search, setSearch] = useState("");
+  const [domainFilter, setDomainFilter] = useState<"all" | "ITGC" | "ITAC">("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState("all");
 
   const { data: controls, refetch } = trpc.controls.listByEngagement.useQuery({ engagementId });
   const seedControls = trpc.controls.seedStandardControls.useMutation({ onSuccess: () => refetch() });
 
-  const filtered = (controls ?? []).filter(c => {
-    if (filter !== "all" && c.domain !== filter) return false;
-    if (statusFilter !== "all" && c.status !== statusFilter) return false;
-    return true;
-  });
+  const all = controls ?? [];
 
-  const itgcCount = controls?.filter(c => c.domain === "ITGC").length ?? 0;
-  const itacCount = controls?.filter(c => c.domain === "ITAC").length ?? 0;
+  const filtered = useMemo(() => all.filter(c => {
+    if (domainFilter !== "all" && c.domain !== domainFilter) return false;
+    if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    if (riskFilter !== "all" && c.riskLevel !== riskFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return c.controlRef.toLowerCase().includes(q) || c.objective.toLowerCase().includes(q);
+    }
+    return true;
+  }), [all, domainFilter, statusFilter, riskFilter, search]);
+
+  const counts = useMemo(() => ({
+    total: all.length,
+    notStarted: all.filter(c => c.status === "NotStarted").length,
+    inProgress: all.filter(c => c.status === "InProgress").length,
+    complete: all.filter(c => c.status === "Complete").length,
+    exception: all.filter(c => c.status === "Exception").length,
+    itgc: all.filter(c => c.domain === "ITGC").length,
+    itac: all.filter(c => c.domain === "ITAC").length,
+  }), [all]);
+
+  const completePct = counts.total > 0 ? Math.round((counts.complete / counts.total) * 100) : 0;
+
+  const clearFilters = () => { setSearch(""); setDomainFilter("all"); setStatusFilter("all"); setRiskFilter("all"); };
+  const hasFilters = search || domainFilter !== "all" || statusFilter !== "all" || riskFilter !== "all";
 
   return (
-    <div style={{ padding: 32 }}>
+    <div style={{ padding: "28px 32px" }}>
+      {/* Back link */}
       <Link href={`/engagements/${engagementId}`}>
-        <a style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", textDecoration: "none", marginBottom: 16 }}>
-          <ArrowLeft size={14} /> Engagement Overview
+        <a style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-muted)", textDecoration: "none", marginBottom: 18, fontWeight: 500 }}>
+          <ArrowLeft size={13} /> Back to Engagement
         </a>
       </Link>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-strong)", margin: 0 }}>Controls</h1>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3 }}>{itgcCount} ITGC · {itacCount} ITAC</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-strong)", margin: 0, letterSpacing: "-0.3px" }}>Controls</h1>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            {counts.itgc} ITGC · {counts.itac} ITAC
+            {filtered.length !== all.length && ` · ${filtered.length} matching`}
+          </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {!controls?.length && (
+          {!all.length && (
             <button onClick={() => seedControls.mutate({ engagementId })} disabled={seedControls.isPending}
-              style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)" }}>
+              style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)", fontSize: 13 }}>
               <Zap size={13} /> {seedControls.isPending ? "Seeding..." : "Seed Standard Controls"}
             </button>
           )}
-          <button onClick={() => setShowCreate(true)} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => setShowCreate(true)} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
             <Plus size={14} /> Add Control
           </button>
         </div>
       </div>
 
-      {/* Filters */}
-      <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "12px 16px", marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", width: 56, flexShrink: 0 }}>Domain</span>
-          <div style={{ display: "flex", gap: 6 }}>
-            {(["all", "ITGC", "ITAC"] as const).map(f => (
-              <button key={f} onClick={() => setFilter(f)}
-                style={{ padding: "4px 14px", borderRadius: 6, border: "1px solid", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.12s",
-                  background: filter === f ? "var(--navy)" : "transparent",
-                  color: filter === f ? "#fff" : "var(--text-muted)",
-                  borderColor: filter === f ? "var(--navy)" : "var(--border)" }}>
-                {f === "all" ? "All" : f}
-              </button>
-            ))}
+      {/* Progress + stats summary */}
+      {all.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", gap: 24 }}>
+          {/* Progress bar */}
+          <div style={{ flex: 1, minWidth: 120 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>Completion</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: completePct === 100 ? "#27AE60" : "var(--text-strong)" }}>{completePct}%</span>
+            </div>
+            <div style={{ height: 6, background: "#F1F5F9", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${completePct}%`, background: completePct === 100 ? "#27AE60" : "var(--accent)", borderRadius: 3, transition: "width 0.4s" }} />
+            </div>
           </div>
+          <div style={{ width: 1, height: 36, background: "var(--border)" }} />
+          {[
+            { label: "Not Started", value: counts.notStarted, color: "#95A5A6" },
+            { label: "In Progress", value: counts.inProgress, color: "#F39C12" },
+            { label: "Complete",    value: counts.complete,   color: "#27AE60" },
+            { label: "Exception",   value: counts.exception,  color: "#E74C3C" },
+          ].map(({ label, value, color }) => (
+            <div key={label} style={{ textAlign: "center", cursor: "pointer" }} onClick={() => setStatusFilter(statusFilter === label.replace(" ","") ? "all" : label.replace(" ",""))}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: value > 0 ? color : "#CBD5E1", lineHeight: 1 }}>{value}</div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, whiteSpace: "nowrap" }}>{label}</div>
+            </div>
+          ))}
         </div>
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", width: 56, flexShrink: 0 }}>Status</span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(["all", "NotStarted", "InProgress", "UnderReview", "Complete", "Exception"] as const).map(s => {
-              const sc = STATUS_COLORS[s];
-              const active = statusFilter === s;
-              return (
-                <button key={s} onClick={() => setStatusFilter(s)}
-                  style={{ padding: "4px 14px", borderRadius: 6, border: "1px solid", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.12s",
-                    background: active ? (s === "all" ? "var(--navy)" : sc?.bg ?? "#F8FAFC") : "transparent",
-                    color: active ? (s === "all" ? "#fff" : sc?.color ?? "var(--text)") : "var(--text-muted)",
-                    borderColor: active ? (s === "all" ? "var(--navy)" : sc?.color ?? "var(--border)") : "var(--border)" }}>
-                  {s === "all" ? "All" : sc?.label ?? s}
-                </button>
-              );
-            })}
-          </div>
+      )}
+
+      {/* Filter bar */}
+      <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        {/* Search */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <Search size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ref or objective..."
+            style={{ paddingLeft: 30, paddingRight: 12, height: 34, border: "1px solid var(--border)", borderRadius: 7, fontSize: 13, outline: "none", width: 220, background: "#F8FAFC", color: "var(--text)" }} />
         </div>
+
+        <div style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
+
+        {/* Domain tabs */}
+        {(["all", "ITGC", "ITAC"] as const).map(f => (
+          <button key={f} onClick={() => setDomainFilter(f)}
+            style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.12s",
+              background: domainFilter === f ? "var(--navy)" : "transparent",
+              color: domainFilter === f ? "#fff" : "var(--text-muted)",
+              borderColor: domainFilter === f ? "var(--navy)" : "transparent" }}>
+            {f === "all" ? "All domains" : f}
+            {f !== "all" && <span style={{ marginLeft: 4, opacity: 0.65, fontSize: 11 }}>{f === "ITGC" ? counts.itgc : counts.itac}</span>}
+          </button>
+        ))}
+
+        <div style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
+
+        {/* Status select */}
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          style={{ height: 34, border: "1px solid var(--border)", borderRadius: 7, padding: "0 10px", fontSize: 12, background: "#F8FAFC", color: "var(--text)", outline: "none" }}>
+          <option value="all">All statuses</option>
+          {Object.entries(STATUS_COLORS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+
+        {/* Risk select */}
+        <select value={riskFilter} onChange={e => setRiskFilter(e.target.value)}
+          style={{ height: 34, border: "1px solid var(--border)", borderRadius: 7, padding: "0 10px", fontSize: 12, background: "#F8FAFC", color: "var(--text)", outline: "none" }}>
+          <option value="all">All risk levels</option>
+          <option value="High">High risk</option>
+          <option value="Medium">Medium risk</option>
+          <option value="Low">Low risk</option>
+        </select>
+
+        {hasFilters && (
+          <button onClick={clearFilters} style={{ marginLeft: "auto", fontSize: 12, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
+            Clear filters
+          </button>
+        )}
       </div>
 
-      {/* Group by type */}
-      {["CM", "AM", "CO", "PD", "Input", "Processing", "Output", "Interface"].map(type => {
-        const group = filtered.filter(c => (c.itgcType ?? c.itacType) === type);
-        if (!group.length) return null;
-        const typeLabel: Record<string, string> = { CM: "Change Management", AM: "Access Management", CO: "Computer Operations", PD: "Program Development", Input: "Input Controls", Processing: "Processing Controls", Output: "Output Controls", Interface: "Interface Controls" };
-        const dc = DOMAIN_COLORS[type] ?? DOMAIN_COLORS.CM;
-        return (
-          <div key={type} style={{ marginBottom: 24 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span style={{ padding: "3px 9px", borderRadius: 5, background: dc.bg, color: dc.color, fontSize: 10, fontWeight: 800, letterSpacing: "0.07em" }}>{type}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-strong)" }}>{typeLabel[type]}</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", background: "#F1F5F9", padding: "1px 7px", borderRadius: 10 }}>{group.length}</span>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {group.map(ctrl => {
-                const sc = STATUS_COLORS[ctrl.status] ?? STATUS_COLORS.NotStarted;
-                return (
-                  <Link key={ctrl.id} href={`/engagements/${engagementId}/controls/${ctrl.id}`}>
-                    <a style={{ display: "flex", alignItems: "center", gap: 14, background: "var(--surface)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px", textDecoration: "none", cursor: "pointer", transition: "box-shadow 0.15s" }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 10px rgba(0,0,0,0.07)"}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = "none"}>
-                      <div style={{ width: 36, height: 36, borderRadius: 8, background: dc.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <span style={{ fontSize: 10, fontWeight: 800, color: dc.color }}>{ctrl.controlRef}</span>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", marginBottom: 2 }}>{ctrl.objective.slice(0, 90)}{ctrl.objective.length > 90 ? "..." : ""}</div>
-                        <div style={{ display: "flex", gap: 10, fontSize: 11, color: "var(--text-muted)" }}>
-                          <span>{ctrl.frequency}</span>
-                          <span style={{ color: RISK_COLORS[ctrl.riskLevel] ?? "#888", fontWeight: 600 }}>{ctrl.riskLevel} risk</span>
-                          {ctrl.elevatedSample && <span style={{ color: "#E74C3C", fontWeight: 600 }}>Elevated sample</span>}
-                        </div>
-                      </div>
-                      <span style={{ padding: "3px 10px", borderRadius: 20, background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{sc.label}</span>
-                      <ChevronRight size={14} color="var(--text-muted)" />
-                    </a>
-                  </Link>
-                );
-              })}
-            </div>
+      {/* Controls table */}
+      {all.length === 0 ? (
+        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid var(--border)", padding: "56px 40px", textAlign: "center" }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <ClipboardList size={22} color="#CBD5E1" />
           </div>
-        );
-      })}
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-strong)", margin: "0 0 8px" }}>No controls yet</h3>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 20px" }}>Add controls manually or seed the standard ITGC set to get started.</p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <button onClick={() => seedControls.mutate({ engagementId })} disabled={seedControls.isPending}
+              style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)" }}>
+              <Zap size={13} /> Seed Standard Controls
+            </button>
+            <button onClick={() => setShowCreate(true)} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
+              <Plus size={13} /> Add Control
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", overflow: "hidden" }}>
+          {/* Table header */}
+          <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 90px 90px 90px 110px 36px", padding: "8px 16px", background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
+            {["Ref", "Control Objective", "Domain", "Risk", "Frequency", "Status", ""].map(h => (
+              <span key={h} style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</span>
+            ))}
+          </div>
 
-      {!filtered.length && (
-        <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: "50px 40px", textAlign: "center" }}>
-          <ClipboardList size={32} color="var(--border)" style={{ margin: "0 auto 12px" }} />
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No controls yet. Add controls manually or seed the standard ITGC set.</p>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              No controls match your filters.{" "}
+              <button onClick={clearFilters} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Clear</button>
+            </div>
+          ) : (
+            filtered.map((ctrl, i) => {
+              const sc = STATUS_COLORS[ctrl.status] ?? STATUS_COLORS.NotStarted;
+              const typeKey = ctrl.itgcType ?? ctrl.itacType ?? "";
+              const dc = DOMAIN_COLORS[typeKey] ?? { bg: "#F1F5F9", color: "#64748B" };
+              return (
+                <Link key={ctrl.id} href={`/engagements/${engagementId}/controls/${ctrl.id}`}>
+                  <a style={{ display: "grid", gridTemplateColumns: "80px 1fr 90px 90px 90px 110px 36px", alignItems: "center", padding: "12px 16px", borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none", textDecoration: "none", transition: "background 0.1s", cursor: "pointer" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#F8FAFC"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                    {/* Ref */}
+                    <div>
+                      <span style={{ padding: "3px 8px", borderRadius: 5, background: dc.bg, color: dc.color, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+                        {ctrl.controlRef}
+                      </span>
+                    </div>
+                    {/* Objective */}
+                    <div style={{ fontSize: 13, color: "var(--text-strong)", fontWeight: 500, paddingRight: 16, overflow: "hidden" }}>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {ctrl.objective}
+                      </div>
+                    </div>
+                    {/* Domain */}
+                    <div style={{ fontSize: 11, color: dc.color, fontWeight: 600 }}>
+                      <span>{ctrl.domain}</span>
+                      {typeKey && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{TYPE_LABELS[typeKey]}</div>}
+                    </div>
+                    {/* Risk */}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: RISK_COLORS[ctrl.riskLevel] ?? "#888" }}>
+                      {ctrl.riskLevel}
+                    </div>
+                    {/* Frequency */}
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{ctrl.frequency}</div>
+                    {/* Status */}
+                    <div>
+                      <span style={{ padding: "3px 9px", borderRadius: 20, background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{sc.label}</span>
+                    </div>
+                    {/* Arrow */}
+                    <div style={{ display: "flex", justifyContent: "center" }}>
+                      <ChevronRight size={14} color="#CBD5E1" />
+                    </div>
+                  </a>
+                </Link>
+              );
+            })
+          )}
         </div>
       )}
 

@@ -712,58 +712,110 @@ function Dashboard() {
 
 // ── Login sub-components (defined outside LoginPage to prevent remount on re-render) ──
 
+function AuditlyWordmark({ size = 28 }: { size?: number }) {
+  const r = size * 0.25;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx={r} fill="url(#wm_grad)" />
+        {/* Stylised checkmark-A: upward triangle with tick */}
+        <path d="M16 7 L23.5 22 L8.5 22 Z" fill="rgba(255,255,255,0.15)" />
+        <path d="M16 9.5 L21.5 21 H19.8 L16 13 L12.2 21 H10.5 Z" fill="#fff" />
+        <path d="M13.2 18 H18.8" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+        <defs>
+          <linearGradient id="wm_grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#1E40AF" />
+            <stop offset="100%" stopColor="#3B82F6" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <span style={{ fontSize: size * 0.68, fontWeight: 700, color: "#fff", letterSpacing: "-0.4px", lineHeight: 1 }}>Auditly</span>
+    </div>
+  );
+}
+
 function LoginLeftPanel() {
+  const kpis = [
+    { label: "Controls Tested", value: "147", delta: "+12 this week", color: "#34D399" },
+    { label: "Coverage Rate",   value: "99%", delta: "On schedule",   color: "#60A5FA" },
+    { label: "Avg Review",      value: "2.4h", delta: "38% faster",   color: "#A78BFA" },
+    { label: "Open Issues",     value: "3",   delta: "2 pending resp", color: "#F59E0B" },
+  ];
+
   return (
     <div className="login-left-panel" style={{
-      width: "44%", flexShrink: 0, background: "linear-gradient(145deg, #0B1E38 0%, #0E2748 55%, #0B1E38 100%)",
-      display: "flex", flexDirection: "column", justifyContent: "space-between",
-      padding: "48px 52px", position: "relative", overflow: "hidden",
+      width: "44%", flexShrink: 0,
+      background: "linear-gradient(155deg, #060C18 0%, #091626 55%, #050F1C 100%)",
+      display: "flex", flexDirection: "column",
+      padding: "44px 48px 36px", position: "relative", overflow: "hidden",
     }}>
-      {/* Static decorative accents */}
-      <div style={{ position: "absolute", top: -100, right: -100, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.12) 0%, transparent 65%)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", bottom: -80, left: -80, width: 360, height: 360, borderRadius: "50%", background: "radial-gradient(circle, rgba(212,175,55,0.09) 0%, transparent 65%)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)", backgroundSize: "32px 32px", pointerEvents: "none" }} />
+      {/* Fine grid texture */}
+      <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
 
-      {/* Logo — invert to white so it renders cleanly on dark background */}
-      <div style={{ position: "relative" }}>
-        <img src="https://res.cloudinary.com/dl6zdpgsk/image/upload/v1782585701/Logo_wjai7x.png" alt="Auditly" style={{ height: 34, width: "auto", objectFit: "contain", display: "block", filter: "brightness(0) invert(1)" }} />
+      {/* Glow orbs */}
+      <div style={{ position: "absolute", top: -140, right: -100, width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.2) 0%, transparent 60%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: -80, left: -60, width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,211,238,0.09) 0%, transparent 60%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: "50%", right: "10%", width: 180, height: 180, borderRadius: "50%", background: "radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 60%)", pointerEvents: "none" }} />
+
+      {/* Logo */}
+      <div style={{ position: "relative", marginBottom: 40 }}>
+        <AuditlyWordmark size={30} />
       </div>
 
-      {/* Headline + features */}
-      <div style={{ position: "relative" }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", color: "#60A5FA", textTransform: "uppercase", marginBottom: 18 }}>
-          AI-Native Audit Platform
-        </div>
-        <h1 style={{ fontSize: 38, fontWeight: 700, color: "#fff", lineHeight: 1.15, margin: "0 0 20px", letterSpacing: "-0.5px" }}>
-          SOX audit work,<br />done faster.
+      {/* Eyebrow */}
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+        <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22D3EE", boxShadow: "0 0 10px rgba(34,211,238,0.9), 0 0 20px rgba(34,211,238,0.4)" }} />
+        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", color: "#60A5FA", textTransform: "uppercase" }}>AI-Native Audit Platform</span>
+      </div>
+
+      {/* Headline */}
+      <div style={{ position: "relative", marginBottom: 14 }}>
+        <h1 style={{ fontSize: 34, fontWeight: 800, color: "#fff", lineHeight: 1.12, margin: 0, letterSpacing: "-0.8px" }}>
+          The intelligence layer<br />
+          <span style={{ background: "linear-gradient(90deg, #60A5FA 0%, #22D3EE 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>for modern audit.</span>
         </h1>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", lineHeight: 1.75, margin: "0 0 40px", maxWidth: 300 }}>
-          Purpose-built for audit professionals who need PCAOB-ready workpapers, real-time deficiency tracking, and AI assistance at every step.
-        </p>
+      </div>
+      <p style={{ position: "relative", fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.75, margin: "0 0 28px", maxWidth: 300 }}>
+        Purpose-built for audit professionals who need PCAOB-ready workpapers, AI exception detection, and real-time insight at every step.
+      </p>
+
+      {/* Floating KPI cards */}
+      <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 24 }}>
+        {kpis.map(({ label, value, delta, color }) => (
+          <div key={label} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 11, padding: "13px 15px", backdropFilter: "blur(12px)" }}>
+            <div style={{ fontSize: 21, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", lineHeight: 1, marginBottom: 4 }}>{value}</div>
+            <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.35)", fontWeight: 500, marginBottom: 5 }}>{label}</div>
+            <div style={{ fontSize: 10, color, fontWeight: 600 }}>{delta}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Feature bullets */}
+      <div style={{ position: "relative" }}>
         {[
           { icon: FileCheck2, label: "PCAOB & SOX compliant workpapers", color: "#34D399" },
           { icon: Shield,     label: "SOC 2 Type II certified infrastructure", color: "#60A5FA" },
           { icon: Bot,        label: "AI-powered exception detection", color: "#A78BFA" },
           { icon: Activity,   label: "Real-time audit trail & analytics", color: "#22D3EE" },
         ].map(({ icon: Icon, label, color }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Icon size={15} color={color} />
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon size={13} color={color} />
             </div>
-            <span style={{ fontSize: 13.5, color: "rgba(255,255,255,0.72)", lineHeight: 1.4 }}>{label}</span>
+            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.58)", lineHeight: 1.4 }}>{label}</span>
           </div>
         ))}
       </div>
 
       {/* Bottom trust strip */}
-      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 24, paddingTop: 24, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 22, paddingTop: 22, borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "auto" }}>
         {[
           { icon: Lock, text: "AES-256 Encrypted" },
           { icon: CheckCircle2, text: "SOC 2 Type II" },
           { icon: FileCheck2, text: "PCAOB Ready" },
         ].map(({ icon: Icon, text }) => (
-          <div key={text} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-            <Icon size={12} /> {text}
+          <div key={text} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "rgba(255,255,255,0.22)" }}>
+            <Icon size={11} /> {text}
           </div>
         ))}
       </div>
@@ -773,14 +825,20 @@ function LoginLeftPanel() {
 
 function LoginFormPanel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ flex: 1, background: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 48px", position: "relative" }}>
-      {/* Subtle top-right corner accent */}
-      <div style={{ position: "absolute", top: 0, right: 0, width: 280, height: 280, background: "radial-gradient(circle at top right, rgba(37,99,235,0.04) 0%, transparent 65%)", pointerEvents: "none" }} />
-      <div className="login-card-anim" style={{ width: "100%", maxWidth: 400, position: "relative" }}>
+    <div style={{ flex: 1, background: "#F8FAFD", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 48px", position: "relative", overflow: "hidden" }}>
+      {/* Very subtle texture */}
+      <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(rgba(37,99,235,0.035) 1px, transparent 1px)", backgroundSize: "24px 24px", pointerEvents: "none" }} />
+      {/* Top-right accent */}
+      <div style={{ position: "absolute", top: -60, right: -60, width: 320, height: 320, background: "radial-gradient(circle at top right, rgba(37,99,235,0.06) 0%, transparent 65%)", pointerEvents: "none" }} />
+      {/* Bottom-left accent */}
+      <div style={{ position: "absolute", bottom: -40, left: -40, width: 220, height: 220, background: "radial-gradient(circle at bottom left, rgba(34,211,238,0.04) 0%, transparent 65%)", pointerEvents: "none" }} />
+
+      <div className="login-card-anim" style={{ width: "100%", maxWidth: 400, position: "relative", background: "#fff", borderRadius: 20, boxShadow: "0 4px 40px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04)", padding: "44px 40px" }}>
         {children}
       </div>
+
       {/* Bottom copyright */}
-      <div style={{ position: "absolute", bottom: 28, fontSize: 11, color: "#CBD5E1" }}>
+      <div style={{ position: "absolute", bottom: 24, fontSize: 11, color: "#CBD5E1" }}>
         &copy; {new Date().getFullYear()} Auditly. All rights reserved.
       </div>
     </div>
@@ -823,10 +881,15 @@ function LoginPage() {
     <div style={{ minHeight: "100vh", display: "flex" }}>
       <LoginLeftPanel />
       <LoginFormPanel>
-        <div style={{ marginBottom: 40 }}>
-          <div style={{ width: 36, height: 3, background: "linear-gradient(90deg, #1E3A5F, var(--accent))", borderRadius: 2, marginBottom: 20 }} />
-          <h2 style={{ fontSize: 30, fontWeight: 700, color: "#0F172A", margin: "0 0 10px", letterSpacing: "-0.6px", lineHeight: 1.2 }}>Two-Factor Auth</h2>
-          <p style={{ fontSize: 14, color: "#64748B", margin: 0, lineHeight: 1.6 }}>Enter the 6-digit code from your authenticator app.</p>
+        <div style={{ marginBottom: 36 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Shield size={14} color="var(--accent)" />
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Verification</span>
+          </div>
+          <h2 style={{ fontSize: 26, fontWeight: 800, color: "#0F172A", margin: "0 0 8px", letterSpacing: "-0.6px", lineHeight: 1.2 }}>Two-Factor Auth</h2>
+          <p style={{ fontSize: 13.5, color: "#64748B", margin: 0, lineHeight: 1.6 }}>Enter the 6-digit code from your authenticator app.</p>
         </div>
         {errorMsg && (
           <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#DC2626", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
@@ -856,10 +919,12 @@ function LoginPage() {
     <div style={{ minHeight: "100vh", display: "flex" }}>
       <LoginLeftPanel />
       <LoginFormPanel>
-        <div style={{ marginBottom: 40 }}>
-          <div style={{ width: 36, height: 3, background: "linear-gradient(90deg, #1E3A5F, var(--accent))", borderRadius: 2, marginBottom: 20 }} />
-          <h2 style={{ fontSize: 30, fontWeight: 700, color: "#0F172A", margin: "0 0 10px", letterSpacing: "-0.6px", lineHeight: 1.2 }}>Welcome back</h2>
-          <p style={{ fontSize: 14, color: "#64748B", margin: 0, lineHeight: 1.6 }}>Sign in to your Auditly workspace to continue your audit engagements.</p>
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+            <AuditlyWordmark size={24} />
+          </div>
+          <h2 style={{ fontSize: 26, fontWeight: 800, color: "#0F172A", margin: "0 0 8px", letterSpacing: "-0.6px", lineHeight: 1.2 }}>Welcome back</h2>
+          <p style={{ fontSize: 13.5, color: "#64748B", margin: 0, lineHeight: 1.6 }}>Sign in to continue your audit engagements.</p>
         </div>
 
         {(providers?.google || providers?.microsoft || providers?.saml) && (
@@ -920,14 +985,14 @@ function LoginPage() {
             : <>Sign in <ArrowRight size={15} /></>}
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, marginTop: 28, paddingTop: 24, borderTop: "1px solid #F1F5F9" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, marginTop: 24, paddingTop: 20, borderTop: "1px solid #F1F5F9" }}>
           {[
             { icon: Lock, label: "AES-256" },
             { icon: CheckCircle2, label: "SOC 2 II" },
             { icon: FileCheck2, label: "PCAOB Ready" },
           ].map(({ icon: Icon, label }) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#CBD5E1" }}>
-              <Icon size={12} color="#94A3B8" /> {label}
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "#CBD5E1" }}>
+              <Icon size={11} color="#94A3B8" /> {label}
             </div>
           ))}
         </div>

@@ -453,6 +453,9 @@ export async function buildWorkbook(params: {
     dueDate?: Date | null;
     fileName?: string | null;
     notes?: string | null;
+    annotatedImageUrl?: string | null;
+    annotations?: unknown | null;
+    testAttributes?: unknown | null;
   }>;
   exceptions: Array<{
     controlRef: string;
@@ -751,6 +754,118 @@ export async function buildWorkbook(params: {
       sampleSize: wp.sampleSize ?? 0,
       testDetail: wp.testDetail,
     });
+  }
+
+  // ── Evidence / Annotated Screenshots ─────────────────────────────────────
+  const annotatedPbc = params.pbcItems.filter(p => p.annotatedImageUrl && p.status === "Accepted");
+  if (annotatedPbc.length > 0) {
+    const wsEvid = wb.addWorksheet("Evidence Screenshots");
+    wsEvid.columns = [
+      { key: "ref",   width: 14 },
+      { key: "file",  width: 36 },
+      { key: "attrs", width: 60 },
+      { key: "note",  width: 40 },
+    ];
+
+    // Sheet header
+    const evidHdr = wsEvid.getRow(1);
+    evidHdr.height = 18;
+    ["Control Ref", "File Name", "Test Attribute Annotations", "Notes"].forEach((v, i) => {
+      const c = evidHdr.getCell(i + 1);
+      c.value = v;
+      c.font = { bold: true, size: 9, color: { argb: COLORS.white }, name: "Arial" };
+      c.fill = cellFill(COLORS.navyHeader);
+      c.border = thinBorder();
+      c.alignment = { horizontal: "center", vertical: "middle" };
+    });
+
+    let evidRow = 2;
+
+    for (const pbc of annotatedPbc) {
+      const attrs = Array.isArray(pbc.testAttributes) ? (pbc.testAttributes as { key: string; label: string }[]) : [];
+      const boxes = Array.isArray(pbc.annotations) ? (pbc.annotations as { testAttribute?: string; label: string; reason: string }[]) : [];
+
+      // Group boxes by test attribute key
+      const attrSummary = attrs.map(attr => {
+        const attrBoxes = boxes.filter(b => b.testAttribute === attr.key);
+        return `[${attr.key}] ${attr.label}: ${attrBoxes.length > 0 ? attrBoxes.map(b => b.label || b.reason || attr.label).join("; ") : "Not annotated"}`;
+      }).join("\n");
+
+      // Metadata row
+      const metaRow = wsEvid.getRow(evidRow);
+      metaRow.getCell(1).value = pbc.controlRef ?? "—";
+      metaRow.getCell(2).value = pbc.fileName ?? "screenshot";
+      metaRow.getCell(3).value = attrSummary || "No test attributes assigned";
+      metaRow.getCell(4).value = pbc.notes ?? "";
+      metaRow.eachCell(c => {
+        c.font = { size: 9, name: "Arial" };
+        c.fill = cellFill(COLORS.lightBlue);
+        c.border = thinBorder();
+        c.alignment = { wrapText: true, vertical: "top" };
+      });
+      metaRow.getCell(1).font = { bold: true, size: 9, name: "Arial", color: { argb: COLORS.navyHeader } };
+      metaRow.height = Math.max(30, (attrs.length + 1) * 14);
+      evidRow++;
+
+      // Embed annotated image
+      try {
+        const imgResponse = await fetch(pbc.annotatedImageUrl!);
+        if (imgResponse.ok) {
+          const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+          const imageId = wb.addImage({ buffer: imgBuffer, extension: "png" });
+          wsEvid.addImage(imageId, {
+            tl: { col: 0, row: evidRow - 1 },
+            ext: { width: 600, height: 340 },
+          });
+          // Reserve rows for the image (approx 340px at ~15px/row = 23 rows)
+          for (let ri = 0; ri < 23; ri++) {
+            const imgRow = wsEvid.getRow(evidRow + ri);
+            imgRow.height = 15;
+          }
+          evidRow += 23;
+        }
+      } catch {
+        // Image fetch failed — skip embedding, row data still there
+      }
+
+      // Attribute legend below image
+      if (attrs.length > 0) {
+        const legendHdr = wsEvid.getRow(evidRow);
+        legendHdr.getCell(1).value = "KEY";
+        legendHdr.getCell(2).value = "TEST ATTRIBUTE";
+        legendHdr.getCell(3).value = "BOXES ANNOTATED";
+        legendHdr.getCell(4).value = "COVERAGE";
+        legendHdr.eachCell(c => {
+          c.font = { bold: true, size: 8, name: "Arial", color: { argb: COLORS.white } };
+          c.fill = cellFill(COLORS.navyLight);
+          c.border = thinBorder();
+          c.alignment = { horizontal: "center", vertical: "middle" };
+        });
+        legendHdr.height = 13;
+        evidRow++;
+
+        attrs.forEach(attr => {
+          const attrBoxes = boxes.filter(b => b.testAttribute === attr.key);
+          const r = wsEvid.getRow(evidRow);
+          r.getCell(1).value = attr.key;
+          r.getCell(2).value = attr.label;
+          r.getCell(3).value = attrBoxes.map(b => b.label || b.reason).filter(Boolean).join("; ") || "None";
+          r.getCell(4).value = attrBoxes.length > 0 ? "Evidenced" : "Pending";
+          r.eachCell(c => {
+            c.font = { size: 9, name: "Arial" };
+            c.fill = cellFill(attrBoxes.length > 0 ? COLORS.greenLight : COLORS.orangeLight);
+            c.border = thinBorder();
+            c.alignment = { wrapText: true, vertical: "middle" };
+          });
+          r.getCell(4).font = { bold: true, size: 9, name: "Arial", color: { argb: attrBoxes.length > 0 ? COLORS.green : COLORS.orange } };
+          r.height = 13;
+          evidRow++;
+        });
+      }
+
+      // Gap between screenshots
+      evidRow += 2;
+    }
   }
 
   // ── Exception Log ────────────────────────────────────────────────────────
