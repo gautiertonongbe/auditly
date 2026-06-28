@@ -712,27 +712,8 @@ function Dashboard() {
 
 // ── Login sub-components (defined outside LoginPage to prevent remount on re-render) ──
 
-function AuditlyWordmark({ size = 28 }: { size?: number }) {
-  const r = size * 0.25;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-        <rect width="32" height="32" rx={r} fill="url(#wm_grad)" />
-        {/* Stylised checkmark-A: upward triangle with tick */}
-        <path d="M16 7 L23.5 22 L8.5 22 Z" fill="rgba(255,255,255,0.15)" />
-        <path d="M16 9.5 L21.5 21 H19.8 L16 13 L12.2 21 H10.5 Z" fill="#fff" />
-        <path d="M13.2 18 H18.8" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
-        <defs>
-          <linearGradient id="wm_grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#1E40AF" />
-            <stop offset="100%" stopColor="#3B82F6" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <span style={{ fontSize: size * 0.68, fontWeight: 700, color: "#fff", letterSpacing: "-0.4px", lineHeight: 1 }}>Auditly</span>
-    </div>
-  );
-}
+const AUDITLY_LOGO = "https://res.cloudinary.com/dl6zdpgsk/image/upload/v1782585701/Logo_wjai7x.png";
+const AUDITLY_FAVICON = "https://res.cloudinary.com/dl6zdpgsk/image/upload/v1782585706/Favicon_s5gfcs.png";
 
 function LoginLeftPanel() {
   const kpis = [
@@ -759,7 +740,7 @@ function LoginLeftPanel() {
 
       {/* Logo */}
       <div style={{ position: "relative", marginBottom: 40 }}>
-        <AuditlyWordmark size={30} />
+        <img src={AUDITLY_LOGO} alt="Auditly" style={{ height: 36, width: "auto", objectFit: "contain", display: "block" }} />
       </div>
 
       {/* Eyebrow */}
@@ -920,8 +901,8 @@ function LoginPage() {
       <LoginLeftPanel />
       <LoginFormPanel>
         <div style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-            <AuditlyWordmark size={24} />
+          <div style={{ marginBottom: 18 }}>
+            <img src={AUDITLY_LOGO} alt="Auditly" style={{ height: 32, width: "auto", objectFit: "contain", display: "block" }} />
           </div>
           <h2 style={{ fontSize: 26, fontWeight: 800, color: "#0F172A", margin: "0 0 8px", letterSpacing: "-0.6px", lineHeight: 1.2 }}>Welcome back</h2>
           <p style={{ fontSize: 13.5, color: "#64748B", margin: 0, lineHeight: 1.6 }}>Sign in to continue your audit engagements.</p>
