@@ -189,17 +189,22 @@ void (async () => {
   try {
     const existing = await db.select({ id: users.id }).from(users).limit(1);
     if (existing.length === 0) {
-      const passwordHash = await bcrypt.hash("Auditly2025!", 12);
+      // Never ship a hardcoded default password: use ADMIN_PASSWORD or generate one
+      const generated = !process.env.ADMIN_PASSWORD;
+      const adminPassword = process.env.ADMIN_PASSWORD || randomUUID().replace(/-/g, "").slice(0, 16);
+      const passwordHash = await bcrypt.hash(adminPassword, 12);
       adminId = randomUUID();
       await db.insert(users).values({
         id: adminId,
-        email: "admin@auditly.io",
+        email: process.env.ADMIN_EMAIL || "admin@auditly.local",
         name: "Admin User",
         role: "admin",
         passwordHash,
+        mustChangePassword: true,
         createdAt: new Date(),
       });
-      console.log("[Seed] Created default admin: admin@auditly.io");
+      console.log(`[Seed] Created admin: ${process.env.ADMIN_EMAIL || "admin@auditly.local"}`);
+      if (generated) console.log(`[Seed] Generated one-time admin password: ${adminPassword} (change it on first login)`);
     } else {
       adminId = existing[0].id;
     }

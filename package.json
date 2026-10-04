@@ -2,6 +2,7 @@
   "name": "auditly",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "tsx watch --env-file=.env server/_core/index.ts",

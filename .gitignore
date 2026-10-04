@@ -5,3 +5,6 @@ dist/
 *.local
 uploads/
 .DS_Store
+.claude/
+.local/
+*.xlsx
