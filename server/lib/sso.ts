@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 /**
  * SSO / SAML authentication helpers.
  *
@@ -30,12 +31,12 @@ async function findOrCreateSSOUser(email: string, name: string, firmName?: strin
   const id = randomUUID();
   // Random password hash — SSO users authenticate via IdP, never via password
   const passwordHash = await bcrypt.hash(randomUUID(), 10);
-  const [created] = await db.insert(users).values({
+  const [created] = await insertReturning(db, users, {
     id, email: email.toLowerCase(), name, passwordHash,
     role: "preparer",
     firmName: firmName ?? null,
     createdAt: new Date(),
-  }).returning();
+  });
   return created;
 }
 

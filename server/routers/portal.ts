@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
@@ -17,7 +18,7 @@ export const portalRouter = router({
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + input.expiryDays);
 
-      const [link] = await ctx.db.insert(portalTokens).values({
+      const [link] = await insertReturning(ctx.db, portalTokens, {
         id: randomUUID(),
         token,
         engagementId: input.engagementId,
@@ -27,7 +28,7 @@ export const portalRouter = router({
         expiresAt,
         isActive: true,
         createdAt: new Date(),
-      }).returning();
+      });
 
       const portalUrl = `${process.env.APP_URL ?? "http://localhost:3000"}/portal/${token}`;
       return { ...link, portalUrl };

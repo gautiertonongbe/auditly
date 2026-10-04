@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, auditedProcedure, protectedProcedure } from "../_core/trpc";
@@ -33,7 +34,7 @@ export const exceptionsRouter = router({
         severity: input.severity,
       });
 
-      const [exc] = await ctx.db.insert(exceptions).values({
+      const [exc] = await insertReturning(ctx.db, exceptions, {
         id: randomUUID(),
         ...input,
         rootCause: aiMemo.rootCause,
@@ -44,7 +45,7 @@ export const exceptionsRouter = router({
         raisedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
-      }).returning();
+      });
 
       await ctx.db.insert(auditTrail).values({
         id: randomUUID(),

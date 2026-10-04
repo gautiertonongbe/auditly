@@ -8,6 +8,8 @@ Auditly covers the full engagement lifecycle (scoping, PBC requests, control tes
 exceptions and deficiency assessment) and uses Claude to check evidence, draft
 workpapers and flag issues. The output is a Big 4-style Excel workpaper.
 
+![Auditly sign-in](docs/assets/screenshot.jpg)
+
 ## Features
 
 - **Engagements & controls**: ITGC (change management, access, operations, development) and ITAC controls

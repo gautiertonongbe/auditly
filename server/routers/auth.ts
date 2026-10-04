@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -128,7 +129,7 @@ export const authRouter = router({
       const existing = await ctx.db.select().from(users).where(eq(users.email, input.email.toLowerCase()));
       if (existing.length > 0) throw new TRPCError({ code: "CONFLICT", message: "Email already in use" });
       const passwordHash = await bcrypt.hash(input.password, 12);
-      const [user] = await ctx.db.insert(users).values({
+      const [user] = await insertReturning(ctx.db, users, {
         id: randomUUID(),
         email: input.email.toLowerCase(),
         passwordHash,
@@ -136,7 +137,7 @@ export const authRouter = router({
         role: input.role,
         firmName: input.firmName ?? null,
         passwordChangedAt: new Date(),
-      }).returning();
+      });
       const token = issueToken(user.id);
       return { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, firmName: user.firmName, mustChangePassword: false } };
     }),

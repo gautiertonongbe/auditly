@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
 import { users, engagementMembers, engagements } from "../../drizzle/schema";
@@ -70,13 +71,13 @@ export const usersRouter = router({
       role: z.enum(["preparer", "senior", "manager", "partner", "admin"]),
     }))
     .mutation(async ({ ctx, input }) => {
-      const [member] = await ctx.db.insert(engagementMembers).values({
+      const [member] = await insertReturning(ctx.db, engagementMembers, {
         id: randomUUID(),
         engagementId: input.engagementId,
         userId: input.userId,
         role: input.role,
         assignedAt: new Date(),
-      }).returning();
+      });
       return member;
     }),
 

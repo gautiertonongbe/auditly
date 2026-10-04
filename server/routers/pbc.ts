@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
@@ -28,13 +29,13 @@ export const pbcRouter = router({
       isIpe: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
-      const [item] = await ctx.db.insert(pbcItems).values({
+      const [item] = await insertReturning(ctx.db, pbcItems, {
         id: randomUUID(),
         ...input,
         requestedDate: new Date(),
         status: "Requested",
         createdAt: new Date(),
-      }).returning();
+      });
       return item;
     }),
 

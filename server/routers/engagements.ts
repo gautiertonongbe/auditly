@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
@@ -28,14 +29,14 @@ export const engagementsRouter = router({
       framework: z.string().default("PCAOB"),
     }))
     .mutation(async ({ ctx, input }) => {
-      const [eng] = await ctx.db.insert(engagements).values({
+      const [eng] = await insertReturning(ctx.db, engagements, {
         id: randomUUID(),
         ...input,
         status: "planning",
         createdBy: ctx.user.id,
         createdAt: new Date(),
         updatedAt: new Date(),
-      }).returning();
+      });
       // Auto-add creator as engagement manager
       await ctx.db.insert(engagementMembers).values({
         id: randomUUID(),
@@ -67,7 +68,7 @@ export const engagementsRouter = router({
       const sourceControls = await ctx.db.select().from(controls).where(eq(controls.engagementId, input.sourceEngagementId));
 
       // Create new engagement
-      const [newEng] = await ctx.db.insert(engagements).values({
+      const [newEng] = await insertReturning(ctx.db, engagements, {
         id: randomUUID(),
         clientName: source.clientName,
         clientIndustry: source.clientIndustry,
@@ -79,7 +80,7 @@ export const engagementsRouter = router({
         createdBy: ctx.user.id,
         createdAt: new Date(),
         updatedAt: new Date(),
-      }).returning();
+      });
 
       // Copy controls with prior year results
       for (const ctrl of sourceControls) {

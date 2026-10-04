@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, auditedProcedure, protectedProcedure } from "../_core/trpc";
@@ -25,7 +26,7 @@ export const sodRouter = router({
         userAccessData: input.userAccessData,
       });
 
-      const [analysis] = await ctx.db.insert(sodAnalyses).values({
+      const [analysis] = await insertReturning(ctx.db, sodAnalyses, {
         id: randomUUID(),
         engagementId: input.engagementId,
         systemName: input.systemName,
@@ -37,7 +38,7 @@ export const sodRouter = router({
         aiSummary: result.summary,
         analyzedAt: new Date(),
         analyzedBy: ctx.user.id,
-      }).returning();
+      });
 
       await ctx.db.insert(auditTrail).values({
         id: randomUUID(),

@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
@@ -33,7 +34,7 @@ export const ipeRouter = router({
         controlRef: input.linkedControls?.[0] ?? "N/A",
       });
 
-      const [ipe] = await ctx.db.insert(ipeItems).values({
+      const [ipe] = await insertReturning(ctx.db, ipeItems, {
         id: randomUUID(),
         engagementId: input.engagementId,
         pbcItemId: input.pbcItemId ?? null,
@@ -49,7 +50,7 @@ export const ipeRouter = router({
         linkedControls: input.linkedControls ?? [],
         createdAt: new Date(),
         updatedAt: new Date(),
-      }).returning();
+      });
       return ipe;
     }),
 

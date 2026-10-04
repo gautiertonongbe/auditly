@@ -1,3 +1,4 @@
+import { insertReturning } from "../_core/db";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { router, protectedProcedure, auditedProcedure } from "../_core/trpc";
@@ -26,14 +27,14 @@ export const controlsRouter = router({
       assignedTo: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const [ctrl] = await ctx.db.insert(controls).values({
+      const [ctrl] = await insertReturning(ctx.db, controls, {
         id: randomUUID(),
         ...input,
         status: "NotStarted",
         elevatedSample: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      }).returning();
+      });
       return ctrl;
     }),
 
@@ -70,14 +71,14 @@ export const controlsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { pbcRequests, ...controlInput } = input;
 
-      const [ctrl] = await ctx.db.insert(controls).values({
+      const [ctrl] = await insertReturning(ctx.db, controls, {
         id: randomUUID(),
         ...controlInput,
         status: "NotStarted",
         elevatedSample: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      }).returning();
+      });
 
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 14); // default 2-week PBC due date
@@ -117,7 +118,7 @@ export const controlsRouter = router({
 
       const inserted = [];
       for (const ctrl of standard) {
-        const [c] = await ctx.db.insert(controls).values({
+        const [c] = await insertReturning(ctx.db, controls, {
           id: randomUUID(),
           engagementId: input.engagementId,
           domain: ctrl.domain as "ITGC",
@@ -130,7 +131,7 @@ export const controlsRouter = router({
           elevatedSample: false,
           createdAt: new Date(),
           updatedAt: new Date(),
-        }).returning();
+        });
         inserted.push(c);
       }
       return inserted;
