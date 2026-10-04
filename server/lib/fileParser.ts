@@ -50,7 +50,7 @@ export async function parseFileBuffer(buffer: Buffer, fileName: string): Promise
   }
 
   if (isImage || isPdf) {
-    // For images and PDFs, return a placeholder — the actual content goes to Claude vision inline
+    // For images and PDFs, return a placeholder — the actual content goes to the vision model inline
     return { text: `[Binary file: ${fileName}, ${(buffer.length / 1024).toFixed(1)} KB]`, mimeType, isImage, isPdf, isExcel: false };
   }
 
@@ -89,7 +89,7 @@ async function parseExcel(buffer: Buffer, fileName: string): Promise<string> {
   return sheets.join("\n\n").slice(0, 12000);
 }
 
-// Classify a PBC file using Claude — supports images and PDFs via vision
+// Classify a PBC file using the AI model — supports images and PDFs via vision
 export async function classifyPbcFileAI(params: {
   fileName: string;
   buffer: Buffer;

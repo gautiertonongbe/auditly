@@ -5,7 +5,7 @@
 AI-assisted IT audit and SOX compliance workspace, built by an auditor for auditors.
 
 Auditly covers the full engagement lifecycle (scoping, PBC requests, control testing,
-exceptions and deficiency assessment) and uses Claude to check evidence, draft
+exceptions and deficiency assessment) and uses AI to check evidence, draft
 workpapers and flag issues. The output is a Big 4-style Excel workpaper.
 
 ![Auditly sign-in](docs/assets/screenshot.jpg)

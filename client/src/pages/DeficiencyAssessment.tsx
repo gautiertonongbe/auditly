@@ -83,7 +83,7 @@ export default function DeficiencyAssessmentPage() {
           disabled={assess.isPending}
           style={{ ...btnPri, display: "flex", alignItems: "center", gap: 7, marginBottom: 24, background: "#8E44AD" }}>
           <Sparkles size={14} />
-          {assess.isPending ? "Claude is assessing..." : `Assess ${selectedIds.length} Exception${selectedIds.length > 1 ? "s" : ""} with AI`}
+          {assess.isPending ? "AI is assessing..." : `Assess ${selectedIds.length} Exception${selectedIds.length > 1 ? "s" : ""} with AI`}
         </button>
       )}
 

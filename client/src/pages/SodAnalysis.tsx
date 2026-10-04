@@ -69,7 +69,7 @@ export default function SodAnalysisPage() {
             style={{ ...btnPri, display: "flex", alignItems: "center", gap: 7, opacity: (!systemName || !accessData) ? 0.5 : 1 }}>
             <Play size={13} /> {analyze.isPending ? "Analyzing with AI..." : "Run SOD Analysis"}
           </button>
-          {analyze.isPending && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Claude is reviewing user access for conflicting roles...</span>}
+          {analyze.isPending && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>AI is reviewing user access for conflicting roles...</span>}
         </div>
       </div>
 
